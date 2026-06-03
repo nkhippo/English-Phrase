@@ -172,17 +172,29 @@
   }
   .empty-icon { font-size: 32px; margin-bottom: 8px; opacity: 0.4; }
 
-  .pagination { display: flex; justify-content: center; gap: 6px; margin-top: 1.25rem; }
-  .page-btn {
-    padding: 5px 14px; font-size: 13px;
-    font-family: 'DM Sans', sans-serif;
-    background: var(--surface); color: var(--text);
+  .scroll-fab {
+    position: fixed;
+    right: max(12px, calc(50% - 238px));
+    z-index: 30;
+    width: 40px;
+    height: 40px;
+    padding: 0;
     border: 1px solid var(--border-strong);
-    border-radius: 6px; cursor: pointer;
-    transition: background 0.12s;
+    border-radius: 10px;
+    background: var(--surface);
+    color: var(--accent-text);
+    font-size: 18px;
+    line-height: 1;
+    font-family: 'DM Sans', sans-serif;
+    cursor: pointer;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    transition: background 0.12s, transform 0.1s;
   }
-  .page-btn:hover { background: var(--accent-light); }
-  .page-btn.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+  .scroll-fab:hover { background: var(--accent-light); }
+  .scroll-fab:active { transform: scale(0.96); }
+  .scroll-fab-top { top: 32vh; }
+  .scroll-fab-bottom { bottom: 10vh; }
+  .scroll-fab.hidden { display: none; }
 
   .loading-overlay {
     text-align: center; padding: 2rem; color: var(--muted); font-size: 14px;
@@ -294,16 +306,16 @@
     <div class="count" id="cnt"></div>
   </div>
   <div id="cards"><div class="loading-overlay"><span class="spinner"></span> 読み込み中…</div></div>
-  <div class="pagination" id="pag"></div>
 </div>
+
+<button type="button" class="scroll-fab scroll-fab-top hidden" id="scroll-top" onclick="scrollToListTop()" aria-label="一覧の先頭へ">↑</button>
+<button type="button" class="scroll-fab scroll-fab-bottom hidden" id="scroll-bottom" onclick="scrollToListBottom()" aria-label="一覧の末尾へ">↓</button>
 
 <script>
 const GAS_URL = 'https://script.google.com/macros/s/AKfycbx63Z2NWDY9MWI1RREWPe1TvHYwqHjiGRnJ-FClfcgkz0nhyuaT-EJbnPa91RlHUfog/exec';
 const API_KEY_STORAGE = 'phrase_anthropic_api_key';
 const SORT_STORAGE = 'phrase_card_sort_times';
-const PAGE_SIZE = 30;
 let entries = [];
-let currentPage = 0;
 
 function getApiKey() {
   return localStorage.getItem(API_KEY_STORAGE) || '';
@@ -412,7 +424,6 @@ async function saveEntry() {
     sortEntries();
     inp.value = '';
     noteEl.value = '';
-    currentPage = 0;
     render();
     st.className = 'status';
     st.innerHTML = '✓ 保存しました（例文5件）';
@@ -478,22 +489,37 @@ function tapCard(id) {
   render();
 }
 
+function updateScrollFabVisibility() {
+  const show = entries.length > 0;
+  document.getElementById('scroll-top').classList.toggle('hidden', !show);
+  document.getElementById('scroll-bottom').classList.toggle('hidden', !show);
+}
+
+function scrollToListTop() {
+  const target = document.querySelector('.section-header') || document.getElementById('cards');
+  target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+function scrollToListBottom() {
+  const el = document.getElementById('cards');
+  const last = el && el.lastElementChild;
+  if (last) last.scrollIntoView({ behavior: 'smooth', block: 'end' });
+}
+
 function render() {
   const el = document.getElementById('cards');
   const cnt = document.getElementById('cnt');
-  const pag = document.getElementById('pag');
 
   if (!entries.length) {
     el.innerHTML = '<div class="empty"><div class="empty-icon">📝</div>まだ登録されていません</div>';
     cnt.textContent = '';
-    pag.innerHTML = '';
+    updateScrollFabVisibility();
     return;
   }
 
   cnt.textContent = `${entries.length}件`;
-  const slice = entries.slice(currentPage * PAGE_SIZE, (currentPage + 1) * PAGE_SIZE);
 
-  el.innerHTML = slice.map(e => {
+  el.innerHTML = entries.map(e => {
     const ex = (e.examples && e.examples[e.idx]) || { en: '', ja: '' };
     const ipaHtml = e.ipa ? `<span class="ipa">${escHtml(e.ipa)}</span>` : '';
     const speakBtn = ex.en
@@ -521,15 +547,8 @@ function render() {
     </div>`;
   }).join('');
 
-  const total = Math.ceil(entries.length / PAGE_SIZE);
-  pag.innerHTML = total > 1
-    ? Array.from({ length: total }, (_, i) =>
-        `<button class="page-btn ${i === currentPage ? 'active' : ''}" onclick="goPage(${i})">${i + 1}</button>`
-      ).join('')
-    : '';
+  updateScrollFabVisibility();
 }
-
-function goPage(p) { currentPage = p; render(); window.scrollTo(0, 0); }
 
 function escHtml(s) {
   return String(s)
