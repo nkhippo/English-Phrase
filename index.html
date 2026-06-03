@@ -183,7 +183,6 @@
 
 <script>
 const GAS_URL = 'https://script.google.com/macros/s/AKfycbz2hsUfX8BC8BRWCNQ4daSw83xsnM1fVxaNaTpfb76t66XXpcBiiBC9CULzAt6WTWjf/exec';
-const CLAUDE_API = 'https://api.anthropic.com/v1/messages';
 const PAGE_SIZE = 30;
 let entries = [];
 let currentPage = 0;
@@ -215,44 +214,15 @@ async function saveEntry() {
   st.innerHTML = '<span class="spinner"></span><span>AIが例文を生成中…</span>';
 
   try {
-    // 1. Claude APIで例文生成
-    const aiRes = await fetch(CLAUDE_API, {
+    const res = await fetch(GAS_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        model: 'claude-sonnet-4-20250514',
-        max_tokens: 1000,
-        messages: [{
-          role: 'user',
-          content: `ユーザーが「${text}」を英語で学びたいと入力しました。${note ? `補足メモ：${note}。この補足も例文生成に活かしてください。` : ''}この意図・単語・フレーズに合った英文例を5つ作成してください。日常会話・ビジネス・留学生活に自然なものを選んでください。必ずJSON形式のみで回答（前置き・説明・コードブロック不要）:
-{"keyword":"核となる英単語またはフレーズ","examples":[{"en":"英文1","ja":"日本語訳1"},{"en":"英文2","ja":"日本語訳2"},{"en":"英文3","ja":"日本語訳3"},{"en":"英文4","ja":"日本語訳4"},{"en":"英文5","ja":"日本語訳5"}]}`
-        }]
-      })
+      body: JSON.stringify({ action: 'generateAndSave', input: text, note })
     });
-    const aiData = await aiRes.json();
-    if (aiData.error) throw new Error(aiData.error.message);
-    const raw = aiData.content.map(b => b.text || '').join('');
-    const parsed = JSON.parse(raw.replace(/```json|```/g, '').trim());
+    const data = await res.json();
+    if (data.error) throw new Error(data.error);
 
-    const entry = {
-      id: Date.now(),
-      input: text,
-      note: note,
-      keyword: parsed.keyword,
-      examples: parsed.examples,
-      date: new Date().toLocaleDateString('ja-JP', { month: '2-digit', day: '2-digit' })
-    };
-
-    // 2. GASにPOSTで保存
-    st.innerHTML = '<span class="spinner"></span><span>スプレッドシートに保存中…</span>';
-    await fetch(GAS_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'save', entry }),
-      mode: 'no-cors'
-    });
-
-    // 3. ローカル一覧に追加
+    const entry = data.entry;
     entries.unshift({ ...entry, idx: 0, show: false });
     inp.value = '';
     noteEl.value = '';
