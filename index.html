@@ -1,0 +1,319 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Vocab — 英語フレーズ記録</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #f7f5f0;
+    --surface: #ffffff;
+    --border: rgba(0,0,0,0.08);
+    --border-strong: rgba(0,0,0,0.15);
+    --text: #1a1a18;
+    --muted: #6b6b67;
+    --faint: #9e9e99;
+    --accent: #2d4a3e;
+    --accent-light: #e8f0ec;
+    --accent-text: #1d3329;
+    --danger: #c0392b;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: 'DM Sans', sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    font-size: 15px;
+    line-height: 1.6;
+  }
+  .container { max-width: 500px; margin: 0 auto; padding: 1.5rem 1rem 4rem; }
+
+  .header { margin-bottom: 2rem; padding-bottom: 1.25rem; border-bottom: 1px solid var(--border); }
+  .header h1 {
+    font-family: 'DM Serif Display', serif;
+    font-size: 26px; font-weight: 400;
+    letter-spacing: -0.02em; color: var(--text);
+  }
+  .header p { font-size: 13px; color: var(--muted); margin-top: 2px; }
+
+  .input-section {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 1.25rem;
+    margin-bottom: 1.5rem;
+  }
+  .input-label { font-size: 11px; font-weight: 500; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); margin-bottom: 8px; }
+  textarea {
+    width: 100%;
+    min-height: 80px;
+    padding: 10px 12px;
+    font-size: 14px;
+    font-family: 'DM Sans', sans-serif;
+    border: 1px solid var(--border-strong);
+    border-radius: 8px;
+    background: var(--bg);
+    color: var(--text);
+    resize: vertical;
+    line-height: 1.55;
+    transition: border-color 0.15s;
+  }
+  textarea:focus { outline: none; border-color: var(--accent); }
+  textarea::placeholder { color: var(--faint); font-size: 13px; }
+  .save-btn {
+    width: 100%; margin-top: 10px;
+    padding: 11px;
+    font-size: 14px; font-weight: 500;
+    font-family: 'DM Sans', sans-serif;
+    background: var(--accent);
+    color: #fff;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: opacity 0.15s, transform 0.1s;
+  }
+  .save-btn:hover { opacity: 0.88; }
+  .save-btn:active { transform: scale(0.99); }
+  .save-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+  .status { font-size: 13px; color: var(--muted); margin-top: 8px; min-height: 18px; display: flex; align-items: center; gap: 6px; }
+  .status.err { color: var(--danger); }
+
+  .spinner {
+    display: inline-block; width: 13px; height: 13px;
+    border: 2px solid var(--border-strong);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin 0.65s linear infinite;
+    flex-shrink: 0;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .section-header { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 12px; }
+  .section-title { font-size: 11px; font-weight: 500; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+  .count { font-size: 12px; color: var(--faint); }
+
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 10px 14px;
+    margin-bottom: 7px;
+    cursor: pointer;
+    transition: border-color 0.15s, transform 0.1s;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .card:hover { border-color: var(--border-strong); }
+  .card:active { transform: scale(0.99); }
+  .card-meta { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
+  .keyword {
+    font-size: 11px; font-weight: 500;
+    background: var(--accent-light);
+    color: var(--accent-text);
+    padding: 3px 9px; border-radius: 20px;
+    letter-spacing: 0.01em;
+  }
+  .date { font-size: 11px; color: var(--faint); }
+  .en-text {
+    font-family: 'DM Serif Display', serif;
+    font-size: 15px; line-height: 1.5;
+    color: var(--text);
+  }
+  .ja-text {
+    font-size: 13px; color: var(--muted);
+    margin-top: 5px; padding-top: 5px;
+    border-top: 1px solid var(--border);
+    line-height: 1.55;
+  }
+
+  .empty {
+    text-align: center; padding: 3rem 1rem;
+    color: var(--faint); font-size: 14px;
+  }
+  .empty-icon { font-size: 32px; margin-bottom: 8px; opacity: 0.4; }
+
+  .pagination { display: flex; justify-content: center; gap: 6px; margin-top: 1.25rem; }
+  .page-btn {
+    padding: 5px 14px; font-size: 13px;
+    font-family: 'DM Sans', sans-serif;
+    background: var(--surface); color: var(--text);
+    border: 1px solid var(--border-strong);
+    border-radius: 6px; cursor: pointer;
+    transition: background 0.12s;
+  }
+  .page-btn:hover { background: var(--accent-light); }
+  .page-btn.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+
+  .loading-overlay {
+    text-align: center; padding: 2rem; color: var(--muted); font-size: 14px;
+  }
+</style>
+</head>
+<body>
+<div class="container">
+  <header class="header">
+    <h1>Vocab</h1>
+    <p>単語・フレーズを入力するとAIが例文を生成します</p>
+  </header>
+
+  <div class="input-section">
+    <div class="input-label">今日覚えたい単語・フレーズ</div>
+    <textarea id="inp" placeholder="例：大文字を意味するletter&#10;例：put up with（我慢する）&#10;例：flustered（うろたえた、慌てた）"></textarea>
+    <button class="save-btn" id="btn" onclick="saveEntry()">保存する</button>
+    <div class="status" id="st"></div>
+  </div>
+
+  <div class="section-header">
+    <div class="section-title">カード一覧</div>
+    <div class="count" id="cnt"></div>
+  </div>
+  <div id="cards"><div class="loading-overlay"><span class="spinner"></span> 読み込み中…</div></div>
+  <div class="pagination" id="pag"></div>
+</div>
+
+<script>
+const GAS_URL = 'https://script.google.com/macros/s/AKfycbxU-U5G4QdutYqVr0OQL8-BbZ25Apec2Tp73U2PCYaDKkOGA82V4FyRDAPsKQEpAPvZ/exec';
+const CLAUDE_API = 'https://api.anthropic.com/v1/messages';
+const PAGE_SIZE = 30;
+let entries = [];
+let currentPage = 0;
+
+// ── 起動時にGASから全件取得 ──
+async function loadEntries() {
+  try {
+    const res = await fetch(GAS_URL + '?action=getAll');
+    const data = await res.json();
+    entries = (data.entries || []).map(e => ({ ...e, idx: 0, show: false }));
+  } catch (e) {
+    console.error('Load error:', e);
+    entries = [];
+  }
+  render();
+}
+
+// ── 保存 ──
+async function saveEntry() {
+  const inp = document.getElementById('inp');
+  const text = inp.value.trim();
+  if (!text) return;
+  const btn = document.getElementById('btn');
+  const st = document.getElementById('st');
+  btn.disabled = true;
+  st.className = 'status';
+  st.innerHTML = '<span class="spinner"></span><span>AIが例文を生成中…</span>';
+
+  try {
+    // 1. Claude APIで例文生成
+    const aiRes = await fetch(CLAUDE_API, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-20250514',
+        max_tokens: 1000,
+        messages: [{
+          role: 'user',
+          content: `ユーザーが「${text}」を英語で学びたいと入力しました。この意図・単語・フレーズに合った英文例を5つ作成してください。日常会話・ビジネス・留学生活に自然なものを選んでください。必ずJSON形式のみで回答（前置き・説明・コードブロック不要）:
+{"keyword":"核となる英単語またはフレーズ","examples":[{"en":"英文1","ja":"日本語訳1"},{"en":"英文2","ja":"日本語訳2"},{"en":"英文3","ja":"日本語訳3"},{"en":"英文4","ja":"日本語訳4"},{"en":"英文5","ja":"日本語訳5"}]}`
+        }]
+      })
+    });
+    const aiData = await aiRes.json();
+    if (aiData.error) throw new Error(aiData.error.message);
+    const raw = aiData.content.map(b => b.text || '').join('');
+    const parsed = JSON.parse(raw.replace(/```json|```/g, '').trim());
+
+    const entry = {
+      id: Date.now(),
+      input: text,
+      keyword: parsed.keyword,
+      examples: parsed.examples,
+      date: new Date().toLocaleDateString('ja-JP', { month: '2-digit', day: '2-digit' })
+    };
+
+    // 2. GASにPOSTで保存
+    st.innerHTML = '<span class="spinner"></span><span>スプレッドシートに保存中…</span>';
+    await fetch(GAS_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'save', entry }),
+      mode: 'no-cors'
+    });
+
+    // 3. ローカル一覧に追加
+    entries.unshift({ ...entry, idx: 0, show: false });
+    inp.value = '';
+    currentPage = 0;
+    render();
+    st.className = 'status';
+    st.innerHTML = '✓ 保存しました（例文5件）';
+    setTimeout(() => { st.innerHTML = ''; }, 3000);
+  } catch (err) {
+    console.error(err);
+    st.className = 'status err';
+    st.innerHTML = 'エラーが発生しました。もう一度お試しください。';
+  }
+  btn.disabled = false;
+}
+
+function tapCard(id) {
+  const e = entries.find(x => x.id === id);
+  if (!e) return;
+  if (!e.show) {
+    e.show = true;
+  } else {
+    e.show = false;
+    e.idx = (e.idx + 1) % e.examples.length;
+  }
+  render();
+}
+
+function render() {
+  const el = document.getElementById('cards');
+  const cnt = document.getElementById('cnt');
+  const pag = document.getElementById('pag');
+
+  if (!entries.length) {
+    el.innerHTML = '<div class="empty"><div class="empty-icon">📝</div>まだ登録されていません</div>';
+    cnt.textContent = '';
+    pag.innerHTML = '';
+    return;
+  }
+
+  cnt.textContent = `${entries.length}件`;
+  const slice = entries.slice(currentPage * PAGE_SIZE, (currentPage + 1) * PAGE_SIZE);
+
+  el.innerHTML = slice.map(e => {
+    const ex = e.examples[e.idx];
+    return `<div class="card" onclick="tapCard(${e.id})">
+      <div class="card-meta">
+        <span class="keyword">${escHtml(e.keyword)}</span>
+        <span class="date">${e.date}</span>
+      </div>
+      <div class="en-text">${escHtml(ex.en)}</div>
+      ${e.show ? `<div class="ja-text">${escHtml(ex.ja)}</div>` : ''}
+    </div>`;
+  }).join('');
+
+  const total = Math.ceil(entries.length / PAGE_SIZE);
+  pag.innerHTML = total > 1
+    ? Array.from({ length: total }, (_, i) =>
+        `<button class="page-btn ${i === currentPage ? 'active' : ''}" onclick="goPage(${i})">${i + 1}</button>`
+      ).join('')
+    : '';
+}
+
+function goPage(p) { currentPage = p; render(); window.scrollTo(0, 0); }
+
+function escHtml(s) {
+  return String(s)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+loadEntries();
+</script>
+</body>
+</html>
