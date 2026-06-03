@@ -39,14 +39,19 @@ function handleSave(entry) {
   return jsonResponse({ ok: true });
 }
 
+function toLowerEntryText(s) {
+  return String(s || '').toLowerCase();
+}
+
 function handleGenerateAndSave(input, note, apiKey) {
   try {
-    const parsed = generateExamples(input, note || '', apiKey);
+    const normalizedInput = toLowerEntryText(input);
+    const parsed = generateExamples(normalizedInput, note || '', apiKey);
     const entry = {
       id: Date.now(),
-      input: input,
+      input: normalizedInput,
       note: note || '',
-      keyword: parsed.keyword,
+      keyword: toLowerEntryText(parsed.keyword),
       examples: parsed.examples,
       date: Utilities.formatDate(new Date(), Session.getScriptTimeZone() || 'Asia/Tokyo', 'M/d')
     };
