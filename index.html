@@ -45,6 +45,8 @@
     padding: 1.25rem;
     margin-bottom: 1.5rem;
   }
+  .input-group { margin-bottom: 14px; }
+  .input-group:last-of-type { margin-bottom: 0; }
   .input-label { font-size: 11px; font-weight: 500; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); margin-bottom: 8px; }
   textarea {
     width: 100%;
@@ -62,8 +64,9 @@
   }
   textarea:focus { outline: none; border-color: var(--accent); }
   textarea::placeholder { color: var(--faint); font-size: 13px; }
+  textarea.note-field { min-height: 56px; }
   .save-btn {
-    width: 100%; margin-top: 10px;
+    width: 100%; margin-top: 14px;
     padding: 11px;
     font-size: 14px; font-weight: 500;
     font-family: 'DM Sans', sans-serif;
@@ -158,8 +161,14 @@
   </header>
 
   <div class="input-section">
-    <div class="input-label">今日覚えたい単語・フレーズ</div>
-    <textarea id="inp" placeholder="例：大文字を意味するletter&#10;例：put up with（我慢する）&#10;例：flustered（うろたえた、慌てた）"></textarea>
+    <div class="input-group">
+      <div class="input-label">登録したい内容</div>
+      <textarea id="inp" placeholder="例：flustered / put up with / これは何ですか？"></textarea>
+    </div>
+    <div class="input-group">
+      <div class="input-label">その補足（任意）</div>
+      <textarea id="note" class="note-field" placeholder="例：授業で先生が言っていたフレーズ"></textarea>
+    </div>
     <button class="save-btn" id="btn" onclick="saveEntry()">保存する</button>
     <div class="status" id="st"></div>
   </div>
@@ -195,7 +204,9 @@ async function loadEntries() {
 // ── 保存 ──
 async function saveEntry() {
   const inp = document.getElementById('inp');
+  const noteEl = document.getElementById('note');
   const text = inp.value.trim();
+  const note = noteEl.value.trim();
   if (!text) return;
   const btn = document.getElementById('btn');
   const st = document.getElementById('st');
@@ -213,7 +224,7 @@ async function saveEntry() {
         max_tokens: 1000,
         messages: [{
           role: 'user',
-          content: `ユーザーが「${text}」を英語で学びたいと入力しました。この意図・単語・フレーズに合った英文例を5つ作成してください。日常会話・ビジネス・留学生活に自然なものを選んでください。必ずJSON形式のみで回答（前置き・説明・コードブロック不要）:
+          content: `ユーザーが「${text}」を英語で学びたいと入力しました。${note ? `補足メモ：${note}。この補足も例文生成に活かしてください。` : ''}この意図・単語・フレーズに合った英文例を5つ作成してください。日常会話・ビジネス・留学生活に自然なものを選んでください。必ずJSON形式のみで回答（前置き・説明・コードブロック不要）:
 {"keyword":"核となる英単語またはフレーズ","examples":[{"en":"英文1","ja":"日本語訳1"},{"en":"英文2","ja":"日本語訳2"},{"en":"英文3","ja":"日本語訳3"},{"en":"英文4","ja":"日本語訳4"},{"en":"英文5","ja":"日本語訳5"}]}`
         }]
       })
@@ -226,6 +237,7 @@ async function saveEntry() {
     const entry = {
       id: Date.now(),
       input: text,
+      note: note,
       keyword: parsed.keyword,
       examples: parsed.examples,
       date: new Date().toLocaleDateString('ja-JP', { month: '2-digit', day: '2-digit' })
@@ -243,6 +255,7 @@ async function saveEntry() {
     // 3. ローカル一覧に追加
     entries.unshift({ ...entry, idx: 0, show: false });
     inp.value = '';
+    noteEl.value = '';
     currentPage = 0;
     render();
     st.className = 'status';
