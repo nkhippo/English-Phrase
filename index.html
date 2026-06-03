@@ -174,7 +174,6 @@
 
   .scroll-fab {
     position: fixed;
-    right: max(12px, calc(50% - 238px));
     z-index: 30;
     width: 40px;
     height: 40px;
@@ -188,13 +187,26 @@
     font-family: 'DM Sans', sans-serif;
     cursor: pointer;
     box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-    transition: background 0.12s, transform 0.1s;
+    transition: opacity 0.15s, background 0.12s, transform 0.1s;
   }
   .scroll-fab:hover { background: var(--accent-light); }
   .scroll-fab:active { transform: scale(0.96); }
-  .scroll-fab-top { top: 32vh; }
-  .scroll-fab-bottom { bottom: 10vh; }
   .scroll-fab.hidden { display: none; }
+  .scroll-fab-top { top: 12px; }
+  .scroll-fab-bottom { bottom: 16px; }
+  /* PC: カード列（max 500px）の右横に配置 */
+  @media (min-width: 560px) {
+    .scroll-fab {
+      right: auto;
+      left: calc(50% + 262px);
+    }
+  }
+  @media (max-width: 559px) {
+    .scroll-fab {
+      left: auto;
+      right: 12px;
+    }
+  }
 
   .loading-overlay {
     text-align: center; padding: 2rem; color: var(--muted); font-size: 14px;
@@ -489,10 +501,21 @@ function tapCard(id) {
   render();
 }
 
+function updateScrollTopVisibility() {
+  const btn = document.getElementById('scroll-top');
+  const first = document.querySelector('#cards .card');
+  if (!entries.length || !first) {
+    btn.classList.add('hidden');
+    return;
+  }
+  const show = first.getBoundingClientRect().top <= 12;
+  btn.classList.toggle('hidden', !show);
+}
+
 function updateScrollFabVisibility() {
-  const show = entries.length > 0;
-  document.getElementById('scroll-top').classList.toggle('hidden', !show);
-  document.getElementById('scroll-bottom').classList.toggle('hidden', !show);
+  const showList = entries.length > 0;
+  document.getElementById('scroll-bottom').classList.toggle('hidden', !showList);
+  updateScrollTopVisibility();
 }
 
 function scrollToListTop() {
@@ -605,6 +628,9 @@ function highlightKeyword(text, keyword, input) {
   }
   return escHtml(text);
 }
+
+window.addEventListener('scroll', updateScrollTopVisibility, { passive: true });
+window.addEventListener('resize', updateScrollTopVisibility, { passive: true });
 
 syncApiSectionVisibility();
 checkGasHealth();
