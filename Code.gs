@@ -1,4 +1,5 @@
 const SHEET_NAME = 'english-phrase';
+const CLAUDE_MODEL = 'claude-sonnet-4-6';
 
 function doGet(e) {
   const action = e.parameter.action;
@@ -85,7 +86,7 @@ function generateExamples(input, note, apiKey) {
       'anthropic-version': '2023-06-01'
     },
     payload: JSON.stringify({
-      model: 'claude-sonnet-4-20250514',
+      model: CLAUDE_MODEL,
       max_tokens: 1000,
       messages: [{ role: 'user', content: prompt }]
     }),
@@ -95,7 +96,11 @@ function generateExamples(input, note, apiKey) {
   const status = res.getResponseCode();
   const body = JSON.parse(res.getContentText());
   if (status !== 200) {
-    throw new Error(body.error?.message || `Claude API error (${status})`);
+    const msg = body.error?.message || `Claude API error (${status})`;
+    if (/model/i.test(msg)) {
+      throw new Error('Claude のモデルが利用できません。GAS の Code.gs を最新版に更新して再デプロイしてください。');
+    }
+    throw new Error(msg);
   }
 
   const raw = body.content.map(b => b.text || '').join('');
