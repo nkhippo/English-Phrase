@@ -47,13 +47,16 @@ function toLowerEntryText(s) {
 function handleGenerateAndSave(input, note, apiKey) {
   try {
     const normalizedInput = toLowerEntryText(input);
-    const parsed = generateExamples(normalizedInput, note || '', apiKey);
+    const generated = generateExamples(normalizedInput, note || '', apiKey);
+    const parsed = generated.parsed;
+    const keyword = toLowerEntryText(parsed.keyword);
+    const ipa = ensureIpa(keyword, apiKey, parsed, generated.raw);
     const entry = {
       id: Date.now(),
       input: normalizedInput,
       note: note || '',
-      keyword: toLowerEntryText(parsed.keyword),
-      ipa: String(parsed.ipa || '').trim(),
+      keyword: keyword,
+      ipa: ipa,
       examples: parsed.examples,
       date: Utilities.formatDate(new Date(), Session.getScriptTimeZone() || 'Asia/Tokyo', 'M/d')
     };
@@ -97,9 +100,19 @@ function generateExamples(input, note, apiKey) {
   const notePart = note ? `補足メモ：${note}。この補足も例文生成に活かしてください。` : '';
   const prompt =
     `ユーザーが「${input}」を英語で学びたいと入力しました。${notePart}` +
-    'この意図・単語・フレーズに合った英文例を5つ作成してください。日常会話・ビジネス・留学生活に自然なものを選んでください。必ずJSON形式のみで回答（前置き・説明・コードブロック不要）:\n' +
-    '{"keyword":"核となる英単語またはフレーズ（小文字）","ipa":"IPA発音記号（スラッシュ区切り、例 /ɡet əˈweɪ wɪð/）","examples":[{"en":"英文1","ja":"日本語訳1"},{"en":"英文2","ja":"日本語訳2"},{"en":"英文3","ja":"日本語訳3"},{"en":"英文4","ja":"日本語訳4"},{"en":"英文5","ja":"日本語訳5"}]}';
+    'この意図・単語・フレーズに合った英文例を5つ作成してください。日常会話・ビジネス・留学生活に自然なものを選んでください。\n' +
+    '必ず次のJSONのみを返してください（前置き・説明・コードブロック禁止）。ipa は必須で空文字不可:\n' +
+    '{"keyword":"核となる英単語またはフレーズ（小文字）","ipa":"/IPA発音記号/","examples":[{"en":"英文1","ja":"日本語訳1"},{"en":"英文2","ja":"日本語訳2"},{"en":"英文3","ja":"日本語訳3"},{"en":"英文4","ja":"日本語訳4"},{"en":"英文5","ja":"日本語訳5"}]}';
 
+  const raw = callClaude(apiKey, prompt, 1500);
+  const parsed = parseGeneratedJson(raw);
+  if (!parsed.examples || !parsed.examples.length) {
+    throw new Error('例文の生成に失敗しました。もう一度お試しください。');
+  }
+  return { parsed: parsed, raw: raw };
+}
+
+function callClaude(apiKey, prompt, maxTokens) {
   const res = UrlFetchApp.fetch('https://api.anthropic.com/v1/messages', {
     method: 'post',
     headers: {
@@ -109,7 +122,7 @@ function generateExamples(input, note, apiKey) {
     },
     payload: JSON.stringify({
       model: CLAUDE_MODEL,
-      max_tokens: 1000,
+      max_tokens: maxTokens,
       messages: [{ role: 'user', content: prompt }]
     }),
     muteHttpExceptions: true
@@ -125,8 +138,55 @@ function generateExamples(input, note, apiKey) {
     throw new Error(msg);
   }
 
-  const raw = body.content.map(b => b.text || '').join('');
-  return JSON.parse(raw.replace(/```json|```/g, '').trim());
+  return body.content.map(b => b.text || '').join('');
+}
+
+function parseGeneratedJson(raw) {
+  const cleaned = raw.replace(/```json|```/g, '').trim();
+  try {
+    return JSON.parse(cleaned);
+  } catch (err) {
+    const m = cleaned.match(/\{[\s\S]*\}/);
+    if (m) return JSON.parse(m[0]);
+    throw err;
+  }
+}
+
+function extractIpaFromParsed(parsed, raw) {
+  const candidate = parsed.ipa || parsed.IPA || parsed.pronunciation || parsed.phonetic;
+  if (candidate) return normalizeIpa(candidate);
+
+  const quoted = raw.match(/"ipa"\s*:\s*"((?:\\.|[^"\\])*)"/i);
+  if (quoted) return normalizeIpa(quoted[1].replace(/\\"/g, '"'));
+
+  const slash = raw.match(/\/[^/\n]{1,80}\//);
+  if (slash) return normalizeIpa(slash[0]);
+
+  return '';
+}
+
+function normalizeIpa(ipa) {
+  let s = String(ipa || '').trim();
+  if (!s) return '';
+  s = s.replace(/^['"]|['"]$/g, '');
+  if (!s.startsWith('/')) s = '/' + s;
+  if (!s.endsWith('/')) s = s + '/';
+  return s;
+}
+
+function ensureIpa(keyword, apiKey, parsed, raw) {
+  let ipa = extractIpaFromParsed(parsed, raw);
+  if (ipa) return ipa;
+
+  const fallbackPrompt =
+    `英語の単語またはフレーズ「${keyword}」のIPA発音記号だけを返してください。` +
+    'JSONのみ: {"ipa":"/ここにIPA/"}';
+  const fallbackRaw = callClaude(apiKey, fallbackPrompt, 200);
+  const fallbackParsed = parseGeneratedJson(fallbackRaw);
+  ipa = extractIpaFromParsed(fallbackParsed, fallbackRaw);
+  if (ipa) return ipa;
+
+  throw new Error('IPA発音記号の生成に失敗しました。もう一度お試しください。');
 }
 
 function handleHealth() {
