@@ -270,6 +270,7 @@
 <script>
 const GAS_URL = 'https://script.google.com/macros/s/AKfycbwvqiTkPZ8E34ZKeAfHWi-ajF90uFAKhUKbc9LUJaFi4ixLL54QYe_r34yy9qnfIdbS/exec';
 const API_KEY_STORAGE = 'phrase_anthropic_api_key';
+const SORT_STORAGE = 'phrase_card_sort_times';
 const PAGE_SIZE = 30;
 let entries = [];
 let currentPage = 0;
@@ -338,6 +339,7 @@ async function loadEntries() {
     const res = await fetch(GAS_URL + '?action=getAll');
     const data = await res.json();
     entries = (data.entries || []).map(e => ({ ...e, idx: 0, show: false }));
+    sortEntries();
   } catch (e) {
     console.error('Load error:', e);
     entries = [];
@@ -375,7 +377,9 @@ async function saveEntry() {
     if (data.error) throw new Error(data.error);
 
     const entry = data.entry;
-    entries.unshift({ ...entry, idx: 0, show: false });
+    entries.push({ ...entry, idx: 0, show: false });
+    setCardSortTime(entry.id, -Date.now());
+    sortEntries();
     inp.value = '';
     noteEl.value = '';
     currentPage = 0;
@@ -397,6 +401,39 @@ async function saveEntry() {
   btn.disabled = false;
 }
 
+function getSortTimes() {
+  try {
+    return JSON.parse(localStorage.getItem(SORT_STORAGE) || '{}');
+  } catch {
+    return {};
+  }
+}
+
+function getCardSortTime(id) {
+  const t = getSortTimes()[String(id)];
+  return t == null ? 0 : t;
+}
+
+function setCardSortTime(id, time) {
+  const map = getSortTimes();
+  map[String(id)] = time;
+  localStorage.setItem(SORT_STORAGE, JSON.stringify(map));
+}
+
+/** ソート時刻が古いほど上。未設定(0)は新規カード用で最上位 */
+function sortEntries() {
+  entries.sort((a, b) => getCardSortTime(a.id) - getCardSortTime(b.id));
+}
+
+function formatDisplayDate(value) {
+  if (value == null || value === '') return '';
+  const s = String(value).trim();
+  if (/^\d{1,2}\/\d{1,2}$/.test(s)) return s;
+  const d = new Date(s);
+  if (isNaN(d.getTime())) return s;
+  return `${d.getMonth() + 1}/${d.getDate()}`;
+}
+
 function tapCard(id) {
   const e = entries.find(x => x.id === id);
   if (!e) return;
@@ -405,6 +442,8 @@ function tapCard(id) {
   } else {
     e.show = false;
     e.idx = (e.idx + 1) % e.examples.length;
+    setCardSortTime(id, Date.now());
+    sortEntries();
   }
   render();
 }
@@ -429,7 +468,7 @@ function render() {
     return `<div class="card" onclick="tapCard(${e.id})">
       <div class="card-meta">
         <span class="keyword">${escHtml(e.keyword)}</span>
-        <span class="date">${e.date}</span>
+        <span class="date">${escHtml(formatDisplayDate(e.date))}</span>
       </div>
       <div class="en-text">${highlightKeyword(ex.en, e.keyword, e.input)}</div>
       ${e.show ? `<div class="ja-text">${escHtml(ex.ja)}</div>` : ''}

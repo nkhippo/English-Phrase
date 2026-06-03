@@ -25,7 +25,7 @@ function handleGetAll() {
     input:    r[1],
     keyword:  r[2],
     examples: JSON.parse(r[3]),
-    date:     r[4],
+    date:     formatSheetDate(r[4]),
     note:     r[5] || '',
     idx:      0,
     show:     false
@@ -48,13 +48,27 @@ function handleGenerateAndSave(input, note, apiKey) {
       note: note || '',
       keyword: parsed.keyword,
       examples: parsed.examples,
-      date: Utilities.formatDate(new Date(), Session.getScriptTimeZone() || 'Asia/Tokyo', 'MM/dd')
+      date: Utilities.formatDate(new Date(), Session.getScriptTimeZone() || 'Asia/Tokyo', 'M/d')
     };
     appendEntry(entry);
     return jsonResponse({ ok: true, entry: entry });
   } catch (err) {
     return jsonResponse({ error: err.message || String(err) });
   }
+}
+
+function formatSheetDate(cell) {
+  if (cell === '' || cell == null) return '';
+  if (Object.prototype.toString.call(cell) === '[object Date]' && !isNaN(cell.getTime())) {
+    return Utilities.formatDate(cell, Session.getScriptTimeZone() || 'Asia/Tokyo', 'M/d');
+  }
+  const s = String(cell).trim();
+  if (/^\d{1,2}\/\d{1,2}$/.test(s)) return s;
+  const parsed = new Date(s);
+  if (!isNaN(parsed.getTime())) {
+    return Utilities.formatDate(parsed, Session.getScriptTimeZone() || 'Asia/Tokyo', 'M/d');
+  }
+  return s;
 }
 
 function appendEntry(entry) {
