@@ -3,6 +3,7 @@ const SHEET_NAME = 'english-phrase';
 function doGet(e) {
   const action = e.parameter.action;
   if (action === 'getAll') return handleGetAll();
+  if (action === 'health') return handleHealth();
   return jsonResponse({ error: 'unknown action' });
 }
 
@@ -101,11 +102,40 @@ function generateExamples(input, note, apiKey) {
   return JSON.parse(raw.replace(/```json|```/g, '').trim());
 }
 
+function handleHealth() {
+  try {
+    UrlFetchApp.fetch('https://httpbin.org/get', { muteHttpExceptions: true });
+    return jsonResponse({ ok: true });
+  } catch (err) {
+    return jsonResponse({ ok: false, error: err.message || String(err) });
+  }
+}
+
 /**
  * 権限エラー時: Apps Script エディタでこの関数を1回実行 → 承認 → Webアプリを再デプロイ
+ * デプロイ設定: 実行者=自分 / アクセス=全員
  */
 function authorizeExternalRequest() {
   UrlFetchApp.fetch('https://httpbin.org/get', { muteHttpExceptions: true });
+  PropertiesService.getScriptProperties().setProperty('EXTERNAL_AUTH_OK', '1');
+}
+
+/** スプレッドシートを開いたとき、所有者に権限付与を促す（1回） */
+function onOpen() {
+  const props = PropertiesService.getScriptProperties();
+  if (props.getProperty('EXTERNAL_AUTH_OK') === '1') return;
+  const ownerEmail = SpreadsheetApp.getActiveSpreadsheet().getOwner().getEmail();
+  if (Session.getEffectiveUser().getEmail() !== ownerEmail) return;
+  try {
+    authorizeExternalRequest();
+  } catch (err) {
+    SpreadsheetApp.getUi().alert(
+      'Phrase: Claude API を使う権限が必要です。\n\n' +
+      '1. 拡張機能 → Apps Script\n' +
+      '2. authorizeExternalRequest を実行して「許可」\n' +
+      '3. デプロイを更新（実行者: 自分 / アクセス: 全員）'
+    );
+  }
 }
 
 function jsonResponse(data) {

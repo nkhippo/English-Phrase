@@ -195,6 +195,19 @@
     text-underline-offset: 2px;
   }
   .api-key-link:hover { color: var(--accent); }
+  .gas-banner {
+    background: #fff8f6;
+    border: 1px solid rgba(192, 57, 43, 0.25);
+    border-radius: 12px;
+    padding: 1rem 1.15rem;
+    margin-bottom: 1.5rem;
+    font-size: 13px;
+    line-height: 1.55;
+    color: var(--text);
+  }
+  .gas-banner strong { display: block; margin-bottom: 6px; color: var(--danger); }
+  .gas-banner ol { margin: 8px 0 0 1.1rem; padding: 0; }
+  .gas-banner li { margin-bottom: 4px; }
 </style>
 </head>
 <body>
@@ -204,6 +217,17 @@
     <p>単語・フレーズを入力するとAIが例文を生成します</p>
     <button type="button" class="api-key-link hidden" id="api-key-toggle" onclick="showApiSection()">APIキーを変更</button>
   </header>
+
+  <div class="gas-banner hidden" id="gas-banner">
+    <strong>GAS の外部接続権限が未設定です</strong>
+    例文生成には Apps Script の承認が必要です（APIキーとは別設定です）。
+    <ol>
+      <li>EnglishPhrase スプレッドシートを開く</li>
+      <li>拡張機能 → Apps Script → 関数 <code>authorizeExternalRequest</code> を実行</li>
+      <li>表示された「権限を確認」→ 自分の Google アカウントで<strong>許可</strong></li>
+      <li>デプロイ → デプロイを管理 → 新バージョン（<strong>実行者: 自分</strong> / アクセス: 全員）</li>
+    </ol>
+  </div>
 
   <div class="input-section settings-section" id="api-section">
     <div class="input-label">APIキー設定</div>
@@ -284,6 +308,24 @@ function showApiSection() {
   document.getElementById('api-section').scrollIntoView({ behavior: 'smooth', block: 'center' });
 }
 
+function isGasAuthError(msg) {
+  return /UrlFetchApp|external_request|権限がありません/.test(msg || '');
+}
+
+function showGasAuthBanner(show) {
+  document.getElementById('gas-banner').classList.toggle('hidden', !show);
+}
+
+async function checkGasHealth() {
+  try {
+    const res = await fetch(GAS_URL + '?action=health');
+    const data = await res.json();
+    showGasAuthBanner(data.ok === false && isGasAuthError(data.error));
+  } catch (e) {
+    console.warn('GAS health check failed:', e);
+  }
+}
+
 // ── 起動時にGASから全件取得 ──
 async function loadEntries() {
   try {
@@ -338,7 +380,13 @@ async function saveEntry() {
   } catch (err) {
     console.error(err);
     st.className = 'status err';
-    st.textContent = err.message || 'エラーが発生しました。もう一度お試しください。';
+    if (isGasAuthError(err.message)) {
+      showGasAuthBanner(true);
+      st.textContent = 'GAS の外部接続権限が未設定です。上の手順で Apps Script を承認してください。';
+      document.getElementById('gas-banner').scrollIntoView({ behavior: 'smooth', block: 'center' });
+    } else {
+      st.textContent = err.message || 'エラーが発生しました。もう一度お試しください。';
+    }
   }
   btn.disabled = false;
 }
@@ -401,6 +449,7 @@ function escHtml(s) {
 }
 
 syncApiSectionVisibility();
+checkGasHealth();
 loadEntries();
 </script>
 </body>
