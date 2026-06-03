@@ -151,6 +151,36 @@
   .loading-overlay {
     text-align: center; padding: 2rem; color: var(--muted); font-size: 14px;
   }
+
+  .settings-section { margin-bottom: 1.5rem; }
+  .settings-hint { font-size: 12px; color: var(--muted); margin-bottom: 10px; line-height: 1.5; }
+  .settings-hint a { color: var(--accent); }
+  .api-input {
+    width: 100%;
+    padding: 10px 12px;
+    font-size: 14px;
+    font-family: 'DM Sans', sans-serif;
+    border: 1px solid var(--border-strong);
+    border-radius: 8px;
+    background: var(--bg);
+    color: var(--text);
+    margin-bottom: 10px;
+  }
+  .api-input:focus { outline: none; border-color: var(--accent); }
+  .secondary-btn {
+    width: 100%;
+    padding: 10px;
+    font-size: 13px; font-weight: 500;
+    font-family: 'DM Sans', sans-serif;
+    background: var(--surface);
+    color: var(--accent-text);
+    border: 1px solid var(--border-strong);
+    border-radius: 8px;
+    cursor: pointer;
+    transition: background 0.15s;
+  }
+  .secondary-btn:hover { background: var(--accent-light); }
+  .api-status.ok { color: var(--accent); }
 </style>
 </head>
 <body>
@@ -159,6 +189,17 @@
     <h1>Phrase</h1>
     <p>単語・フレーズを入力するとAIが例文を生成します</p>
   </header>
+
+  <div class="input-section settings-section" id="api-section">
+    <div class="input-label">APIキー設定</div>
+    <p class="settings-hint">
+      例文生成に Anthropic の API キーを使います。キーはこの端末のブラウザ（localStorage）にのみ保存され、保存のたびに GAS 経由で送信されます。
+      <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener">キーを取得する →</a>
+    </p>
+    <input type="password" id="api-key" class="api-input" placeholder="sk-ant-..." autocomplete="off">
+    <button type="button" class="secondary-btn" onclick="saveApiKey()">キーを保存</button>
+    <div class="status api-status" id="api-st"></div>
+  </div>
 
   <div class="input-section">
     <div class="input-group">
@@ -183,9 +224,41 @@
 
 <script>
 const GAS_URL = 'https://script.google.com/macros/s/AKfycbwMc_RXJCqJLBwOw84S-UxqkycjYVh4JMT78Zo-C4loM5Kni6bBGUQ2D6JQwqhhmxeP/exec';
+const API_KEY_STORAGE = 'phrase_anthropic_api_key';
 const PAGE_SIZE = 30;
 let entries = [];
 let currentPage = 0;
+
+function getApiKey() {
+  return localStorage.getItem(API_KEY_STORAGE) || '';
+}
+
+function saveApiKey() {
+  const input = document.getElementById('api-key');
+  const st = document.getElementById('api-st');
+  const val = input.value.trim();
+  if (!val) {
+    st.className = 'status api-status err';
+    st.textContent = 'APIキーを入力してください。';
+    return;
+  }
+  localStorage.setItem(API_KEY_STORAGE, val);
+  input.value = '';
+  updateApiKeyStatus();
+  st.className = 'status api-status ok';
+  st.textContent = '✓ この端末に保存しました';
+}
+
+function updateApiKeyStatus() {
+  const st = document.getElementById('api-st');
+  if (getApiKey()) {
+    st.className = 'status api-status ok';
+    st.textContent = '✓ APIキー登録済み（変更する場合は上に入力して保存）';
+  } else {
+    st.className = 'status api-status err';
+    st.textContent = '未設定 — フレーズを保存する前にキーを登録してください';
+  }
+}
 
 // ── 起動時にGASから全件取得 ──
 async function loadEntries() {
@@ -207,8 +280,15 @@ async function saveEntry() {
   const text = inp.value.trim();
   const note = noteEl.value.trim();
   if (!text) return;
+  const apiKey = getApiKey();
   const btn = document.getElementById('btn');
   const st = document.getElementById('st');
+  if (!apiKey) {
+    st.className = 'status err';
+    st.textContent = 'APIキーが未設定です。上の「APIキー設定」から登録してください。';
+    document.getElementById('api-section').scrollIntoView({ behavior: 'smooth', block: 'center' });
+    return;
+  }
   btn.disabled = true;
   st.className = 'status';
   st.innerHTML = '<span class="spinner"></span><span>AIが例文を生成中…</span>';
@@ -217,7 +297,7 @@ async function saveEntry() {
     const res = await fetch(GAS_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-      body: JSON.stringify({ action: 'generateAndSave', input: text, note })
+      body: JSON.stringify({ action: 'generateAndSave', input: text, note, apiKey })
     });
     const data = await res.json();
     if (data.error) throw new Error(data.error);
@@ -234,7 +314,7 @@ async function saveEntry() {
   } catch (err) {
     console.error(err);
     st.className = 'status err';
-    st.innerHTML = 'エラーが発生しました。もう一度お試しください。';
+    st.textContent = err.message || 'エラーが発生しました。もう一度お試しください。';
   }
   btn.disabled = false;
 }
@@ -296,6 +376,7 @@ function escHtml(s) {
     .replace(/"/g, '&quot;');
 }
 
+updateApiKeyStatus();
 loadEntries();
 </script>
 </body>

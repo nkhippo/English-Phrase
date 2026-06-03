@@ -9,7 +9,7 @@ function doGet(e) {
 function doPost(e) {
   const data = JSON.parse(e.postData.contents);
   if (data.action === 'save') return handleSave(data.entry);
-  if (data.action === 'generateAndSave') return handleGenerateAndSave(data.input, data.note);
+  if (data.action === 'generateAndSave') return handleGenerateAndSave(data.input, data.note, data.apiKey);
   return jsonResponse({ error: 'unknown action' });
 }
 
@@ -37,9 +37,9 @@ function handleSave(entry) {
   return jsonResponse({ ok: true });
 }
 
-function handleGenerateAndSave(input, note) {
+function handleGenerateAndSave(input, note, apiKey) {
   try {
-    const parsed = generateExamples(input, note || '');
+    const parsed = generateExamples(input, note || '', apiKey);
     const entry = {
       id: Date.now(),
       input: input,
@@ -67,9 +67,8 @@ function appendEntry(entry) {
   ]);
 }
 
-function generateExamples(input, note) {
-  const apiKey = PropertiesService.getScriptProperties().getProperty('ANTHROPIC_API_KEY');
-  if (!apiKey) throw new Error('ANTHROPIC_API_KEY が未設定です。スクリプトプロパティに API キーを登録してください。');
+function generateExamples(input, note, apiKey) {
+  if (!apiKey) throw new Error('APIキーが未設定です。アプリ上部の「APIキー設定」から登録してください。');
 
   const notePart = note ? `補足メモ：${note}。この補足も例文生成に活かしてください。` : '';
   const prompt =
