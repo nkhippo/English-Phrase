@@ -27,6 +27,7 @@ function handleGetAll() {
     examples: JSON.parse(r[3]),
     date:     formatSheetDate(r[4]),
     note:     r[5] || '',
+    ipa:      r[6] || '',
     idx:      0,
     show:     false
   })).reverse();
@@ -52,6 +53,7 @@ function handleGenerateAndSave(input, note, apiKey) {
       input: normalizedInput,
       note: note || '',
       keyword: toLowerEntryText(parsed.keyword),
+      ipa: String(parsed.ipa || '').trim(),
       examples: parsed.examples,
       date: Utilities.formatDate(new Date(), Session.getScriptTimeZone() || 'Asia/Tokyo', 'M/d')
     };
@@ -84,7 +86,8 @@ function appendEntry(entry) {
     entry.keyword,
     JSON.stringify(entry.examples),
     entry.date,
-    entry.note || ''
+    entry.note || '',
+    entry.ipa || ''
   ]);
 }
 
@@ -95,7 +98,7 @@ function generateExamples(input, note, apiKey) {
   const prompt =
     `ユーザーが「${input}」を英語で学びたいと入力しました。${notePart}` +
     'この意図・単語・フレーズに合った英文例を5つ作成してください。日常会話・ビジネス・留学生活に自然なものを選んでください。必ずJSON形式のみで回答（前置き・説明・コードブロック不要）:\n' +
-    '{"keyword":"核となる英単語またはフレーズ","examples":[{"en":"英文1","ja":"日本語訳1"},{"en":"英文2","ja":"日本語訳2"},{"en":"英文3","ja":"日本語訳3"},{"en":"英文4","ja":"日本語訳4"},{"en":"英文5","ja":"日本語訳5"}]}';
+    '{"keyword":"核となる英単語またはフレーズ（小文字）","ipa":"IPA発音記号（スラッシュ区切り、例 /ɡet əˈweɪ wɪð/）","examples":[{"en":"英文1","ja":"日本語訳1"},{"en":"英文2","ja":"日本語訳2"},{"en":"英文3","ja":"日本語訳3"},{"en":"英文4","ja":"日本語訳4"},{"en":"英文5","ja":"日本語訳5"}]}';
 
   const res = UrlFetchApp.fetch('https://api.anthropic.com/v1/messages', {
     method: 'post',

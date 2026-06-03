@@ -109,7 +109,34 @@
   }
   .card:hover { border-color: var(--border-strong); }
   .card:active { transform: scale(0.99); }
-  .card-meta { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
+  .card-meta { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 6px; gap: 8px; }
+  .card-meta-left { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 8px; min-width: 0; flex: 1; }
+  .ipa {
+    font-size: 12px;
+    color: var(--muted);
+    letter-spacing: 0.02em;
+  }
+  .card-body { position: relative; padding-right: 40px; }
+  .speak-btn {
+    position: absolute;
+    right: 0;
+    bottom: 0;
+    width: 32px;
+    height: 32px;
+    padding: 0;
+    border: 1px solid var(--border-strong);
+    border-radius: 8px;
+    background: var(--surface);
+    color: var(--accent);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.12s, border-color 0.12s;
+  }
+  .speak-btn:hover { background: var(--accent-light); border-color: var(--accent); }
+  .speak-btn:active { transform: scale(0.96); }
+  .speak-btn svg { width: 16px; height: 16px; }
   .keyword {
     font-size: 11px; font-weight: 500;
     background: var(--accent-light);
@@ -465,12 +492,25 @@ function render() {
 
   el.innerHTML = slice.map(e => {
     const ex = e.examples[e.idx];
+    const ipaHtml = e.ipa ? `<span class="ipa">${escHtml(e.ipa)}</span>` : '';
     return `<div class="card" onclick="tapCard(${e.id})">
       <div class="card-meta">
-        <span class="keyword">${escHtml(e.keyword)}</span>
+        <div class="card-meta-left">
+          <span class="keyword">${escHtml(e.keyword)}</span>
+          ${ipaHtml}
+        </div>
         <span class="date">${escHtml(formatDisplayDate(e.date))}</span>
       </div>
-      <div class="en-text">${highlightKeyword(ex.en, e.keyword, e.input)}</div>
+      <div class="card-body">
+        <div class="en-text">${highlightKeyword(ex.en, e.keyword, e.input)}</div>
+        <button type="button" class="speak-btn" onclick="speakSentence(event, this)" data-text="${escAttr(ex.en)}" aria-label="英文を読み上げ">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon>
+            <path d="M15.54 8.46a5 5 0 0 1 0 7.07"></path>
+            <path d="M19.07 4.93a10 10 0 0 1 0 14.14"></path>
+          </svg>
+        </button>
+      </div>
       ${e.show ? `<div class="ja-text">${escHtml(ex.ja)}</div>` : ''}
     </div>`;
   }).join('');
@@ -491,6 +531,25 @@ function escHtml(s) {
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;');
+}
+
+function escAttr(s) {
+  return escHtml(s);
+}
+
+function speakSentence(ev, btn) {
+  ev.stopPropagation();
+  const text = btn.getAttribute('data-text');
+  if (!text) return;
+  if (!('speechSynthesis' in window)) {
+    alert('このブラウザは音声読み上げに対応していません。');
+    return;
+  }
+  window.speechSynthesis.cancel();
+  const u = new SpeechSynthesisUtterance(text);
+  u.lang = 'en-US';
+  u.rate = 0.95;
+  window.speechSynthesis.speak(u);
 }
 
 function escapeRegExp(s) {
