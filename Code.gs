@@ -101,6 +101,13 @@ function generateExamples(input, note, apiKey) {
   return JSON.parse(raw.replace(/```json|```/g, '').trim());
 }
 
+/**
+ * 権限エラー時: Apps Script エディタでこの関数を1回実行 → 承認 → Webアプリを再デプロイ
+ */
+function authorizeExternalRequest() {
+  UrlFetchApp.fetch('https://httpbin.org/get', { muteHttpExceptions: true });
+}
+
 function jsonResponse(data) {
   return ContentService
     .createTextOutput(JSON.stringify(data))

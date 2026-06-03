@@ -181,6 +181,20 @@
   }
   .secondary-btn:hover { background: var(--accent-light); }
   .api-status.ok { color: var(--accent); }
+  .hidden { display: none !important; }
+  .api-key-link {
+    margin-top: 8px;
+    padding: 0;
+    border: none;
+    background: none;
+    font-size: 12px;
+    font-family: 'DM Sans', sans-serif;
+    color: var(--muted);
+    cursor: pointer;
+    text-decoration: underline;
+    text-underline-offset: 2px;
+  }
+  .api-key-link:hover { color: var(--accent); }
 </style>
 </head>
 <body>
@@ -188,6 +202,7 @@
   <header class="header">
     <h1>Phrase</h1>
     <p>単語・フレーズを入力するとAIが例文を生成します</p>
+    <button type="button" class="api-key-link hidden" id="api-key-toggle" onclick="showApiSection()">APIキーを変更</button>
   </header>
 
   <div class="input-section settings-section" id="api-section">
@@ -244,20 +259,29 @@ function saveApiKey() {
   }
   localStorage.setItem(API_KEY_STORAGE, val);
   input.value = '';
-  updateApiKeyStatus();
-  st.className = 'status api-status ok';
-  st.textContent = '✓ この端末に保存しました';
+  syncApiSectionVisibility();
 }
 
-function updateApiKeyStatus() {
+function syncApiSectionVisibility() {
+  const section = document.getElementById('api-section');
+  const toggle = document.getElementById('api-key-toggle');
   const st = document.getElementById('api-st');
-  if (getApiKey()) {
-    st.className = 'status api-status ok';
-    st.textContent = '✓ APIキー登録済み（変更する場合は上に入力して保存）';
+  const hasKey = !!getApiKey();
+  section.classList.toggle('hidden', hasKey);
+  toggle.classList.toggle('hidden', !hasKey);
+  if (hasKey) {
+    st.textContent = '';
+    st.className = 'status api-status';
   } else {
     st.className = 'status api-status err';
     st.textContent = '未設定 — フレーズを保存する前にキーを登録してください';
   }
+}
+
+function showApiSection() {
+  document.getElementById('api-section').classList.remove('hidden');
+  document.getElementById('api-key').focus();
+  document.getElementById('api-section').scrollIntoView({ behavior: 'smooth', block: 'center' });
 }
 
 // ── 起動時にGASから全件取得 ──
@@ -286,7 +310,7 @@ async function saveEntry() {
   if (!apiKey) {
     st.className = 'status err';
     st.textContent = 'APIキーが未設定です。上の「APIキー設定」から登録してください。';
-    document.getElementById('api-section').scrollIntoView({ behavior: 'smooth', block: 'center' });
+    showApiSection();
     return;
   }
   btn.disabled = true;
@@ -376,7 +400,7 @@ function escHtml(s) {
     .replace(/"/g, '&quot;');
 }
 
-updateApiKeyStatus();
+syncApiSectionVisibility();
 loadEntries();
 </script>
 </body>
