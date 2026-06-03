@@ -119,8 +119,14 @@
   }
   .date { font-size: 11px; color: var(--faint); }
   .en-text {
-    font-family: 'DM Serif Display', serif;
-    font-size: 15px; line-height: 1.5;
+    font-family: 'DM Sans', sans-serif;
+    font-size: 15px;
+    font-weight: 400;
+    line-height: 1.55;
+    color: var(--text);
+  }
+  .en-text strong {
+    font-weight: 600;
     color: var(--text);
   }
   .ja-text {
@@ -425,7 +431,7 @@ function render() {
         <span class="keyword">${escHtml(e.keyword)}</span>
         <span class="date">${e.date}</span>
       </div>
-      <div class="en-text">${escHtml(ex.en)}</div>
+      <div class="en-text">${highlightKeyword(ex.en, e.keyword, e.input)}</div>
       ${e.show ? `<div class="ja-text">${escHtml(ex.ja)}</div>` : ''}
     </div>`;
   }).join('');
@@ -446,6 +452,38 @@ function escHtml(s) {
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;');
+}
+
+function escapeRegExp(s) {
+  return String(s).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function highlightTerm(text, term) {
+  const t = String(term || '').trim();
+  if (!t) return null;
+  const re = new RegExp(escapeRegExp(t), 'gi');
+  if (!re.test(text)) return null;
+
+  let html = '';
+  let lastIndex = 0;
+  let match;
+  const finder = new RegExp(escapeRegExp(t), 'gi');
+  while ((match = finder.exec(text)) !== null) {
+    html += escHtml(text.slice(lastIndex, match.index));
+    html += '<strong>' + escHtml(match[0]) + '</strong>';
+    lastIndex = match.index + match[0].length;
+  }
+  html += escHtml(text.slice(lastIndex));
+  return html;
+}
+
+/** 例文中の登録ワード（keyword → input の順）のみ太字 */
+function highlightKeyword(text, keyword, input) {
+  for (const term of [keyword, input]) {
+    const html = highlightTerm(text, term);
+    if (html) return html;
+  }
+  return escHtml(text);
 }
 
 syncApiSectionVisibility();
