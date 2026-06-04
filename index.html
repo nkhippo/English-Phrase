@@ -93,9 +93,60 @@
   }
   @keyframes spin { to { transform: rotate(360deg); } }
 
-  .section-header { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 12px; }
+  .section-header { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 10px; }
   .section-title { font-size: 11px; font-weight: 500; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
   .count { font-size: 12px; color: var(--faint); }
+
+  .list-controls {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin-bottom: 12px;
+  }
+  .control-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+  .control-label {
+    font-size: 11px;
+    font-weight: 500;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--muted);
+    min-width: 3.2em;
+  }
+  .filter-chips { display: flex; flex-wrap: wrap; gap: 5px; flex: 1; }
+  .chip, .sort-select {
+    font-size: 11px;
+    font-family: 'DM Sans', sans-serif;
+    border-radius: 20px;
+    border: 1px solid var(--border-strong);
+    background: var(--surface);
+    color: var(--muted);
+    cursor: pointer;
+    transition: background 0.12s, border-color 0.12s, color 0.12s;
+  }
+  .chip {
+    padding: 4px 10px;
+    font-weight: 500;
+  }
+  .chip:hover { border-color: var(--accent); color: var(--accent-text); }
+  .chip.active {
+    background: var(--accent-light);
+    border-color: var(--accent);
+    color: var(--accent-text);
+  }
+  .sort-select {
+    padding: 5px 28px 5px 10px;
+    border-radius: 8px;
+    font-weight: 500;
+    color: var(--text);
+    appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%236b6b67' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 8px center;
+    min-width: 0;
+    flex: 1;
+    max-width: 100%;
+  }
+  .sort-select:focus { outline: none; border-color: var(--accent); }
 
   .card {
     position: relative;
@@ -140,6 +191,17 @@
   .speak-btn:hover { background: var(--accent-light); border-color: var(--accent); }
   .speak-btn:active { transform: scale(0.96); }
   .speak-btn svg { width: 18px; height: 18px; flex-shrink: 0; pointer-events: none; }
+  .pos {
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    background: var(--bg);
+    color: var(--muted);
+    padding: 3px 7px;
+    border-radius: 20px;
+    border: 1px solid var(--border);
+  }
   .keyword {
     font-size: 11px; font-weight: 500;
     background: var(--accent-light);
@@ -317,6 +379,23 @@
     <div class="section-title">カード一覧</div>
     <div class="count" id="cnt"></div>
   </div>
+  <div class="list-controls hidden" id="list-controls">
+    <div class="control-row">
+      <span class="control-label">品詞</span>
+      <div class="filter-chips" id="pos-filters"></div>
+    </div>
+    <div class="control-row">
+      <span class="control-label">並び</span>
+      <select class="sort-select" id="sort-select" onchange="onSortChange()">
+        <option value="registered-desc">登録日（新しい順）</option>
+        <option value="registered-asc">登録日（古い順）</option>
+        <option value="confirmed-desc">確認日（新しい順）</option>
+        <option value="confirmed-asc">確認日（古い順）</option>
+        <option value="confirmed-unconfirmed">確認日（未確認を上）</option>
+        <option value="review">復習優先（従来）</option>
+      </select>
+    </div>
+  </div>
   <div id="cards"><div class="loading-overlay"><span class="spinner"></span> 読み込み中…</div></div>
 </div>
 
@@ -324,10 +403,19 @@
 <button type="button" class="scroll-fab scroll-fab-bottom hidden" id="scroll-bottom" onclick="scrollToListBottom()" aria-label="一覧の末尾へ">↓</button>
 
 <script>
-const GAS_URL = 'https://script.google.com/macros/s/AKfycbx63Z2NWDY9MWI1RREWPe1TvHYwqHjiGRnJ-FClfcgkz0nhyuaT-EJbnPa91RlHUfog/exec';
+const GAS_URL = 'https://script.google.com/macros/s/AKfycbxCBrQjN8kX3_7xjkuYZAVjZEX51hnwa6sR6zq2ZrzypLGc9Sf4PAzLlUTsEPxb3b_z/exec';
 const API_KEY_STORAGE = 'phrase_anthropic_api_key';
 const SORT_STORAGE = 'phrase_card_sort_times';
+const FILTER_STORAGE = 'phrase_pos_filter';
+const SORT_MODE_STORAGE = 'phrase_sort_mode';
+const POS_LABELS = {
+  noun: 'noun', verb: 'verb', adjective: 'adj', adverb: 'adv',
+  preposition: 'prep', conjunction: 'conj', pronoun: 'pron',
+  interjection: 'int', idiom: 'idiom', phrase: 'phrase'
+};
 let entries = [];
+let posFilter = localStorage.getItem(FILTER_STORAGE) || 'all';
+let sortMode = localStorage.getItem(SORT_MODE_STORAGE) || 'registered-desc';
 
 function getApiKey() {
   return localStorage.getItem(API_KEY_STORAGE) || '';
@@ -392,8 +480,15 @@ async function loadEntries() {
   try {
     const res = await fetch(GAS_URL + '?action=getAll');
     const data = await res.json();
-    entries = (data.entries || []).map(e => ({ ...e, idx: 0, show: false }));
-    sortEntries();
+    entries = (data.entries || []).map(e => {
+      const entry = { ...e, pos: e.pos || '', confirmedAt: e.confirmedAt || '', idx: 0, show: false };
+      if (!entry.confirmedAt) {
+        const legacy = getCardSortTime(entry.id);
+        if (legacy > 0) entry.confirmedAt = legacy;
+      }
+      return entry;
+    });
+    applyListOrder();
   } catch (e) {
     console.error('Load error:', e);
     entries = [];
@@ -431,9 +526,9 @@ async function saveEntry() {
     if (data.error) throw new Error(data.error);
 
     const entry = data.entry;
-    entries.push({ ...entry, idx: 0, show: false });
+    entries.push({ ...entry, pos: entry.pos || '', confirmedAt: '', idx: 0, show: false });
     setCardSortTime(entry.id, -Date.now());
-    sortEntries();
+    applyListOrder();
     inp.value = '';
     noteEl.value = '';
     render();
@@ -473,9 +568,105 @@ function setCardSortTime(id, time) {
   localStorage.setItem(SORT_STORAGE, JSON.stringify(map));
 }
 
-/** ソート時刻が古いほど上。未設定(0)は新規カード用で最上位 */
-function sortEntries() {
+function getConfirmedTime(e) {
+  if (e.confirmedAt) return Number(e.confirmedAt);
+  const legacy = getCardSortTime(e.id);
+  return legacy > 0 ? legacy : null;
+}
+
+function getRegistrationTime(e) {
+  const id = Number(e.id);
+  return isNaN(id) ? 0 : id;
+}
+
+/** 復習優先: ソート時刻が古いほど上。未設定(0)は新規カード用で最上位 */
+function sortByReview() {
   entries.sort((a, b) => getCardSortTime(a.id) - getCardSortTime(b.id));
+}
+
+function applyListOrder() {
+  const mode = sortMode;
+  if (mode === 'review') {
+    sortByReview();
+    return;
+  }
+  entries.sort((a, b) => {
+    if (mode === 'registered-desc') return getRegistrationTime(b) - getRegistrationTime(a);
+    if (mode === 'registered-asc') return getRegistrationTime(a) - getRegistrationTime(b);
+    const ca = getConfirmedTime(a);
+    const cb = getConfirmedTime(b);
+    if (mode === 'confirmed-unconfirmed') {
+      if (ca == null && cb == null) return getRegistrationTime(b) - getRegistrationTime(a);
+      if (ca == null) return -1;
+      if (cb == null) return 1;
+      return ca - cb;
+    }
+    if (ca == null && cb == null) return getRegistrationTime(b) - getRegistrationTime(a);
+    if (ca == null) return 1;
+    if (cb == null) return -1;
+    if (mode === 'confirmed-desc') return cb - ca;
+    if (mode === 'confirmed-asc') return ca - cb;
+    return 0;
+  });
+}
+
+function getFilteredEntries() {
+  if (posFilter === 'all') return entries;
+  if (posFilter === 'none') return entries.filter(e => !e.pos);
+  return entries.filter(e => e.pos === posFilter);
+}
+
+function collectPosOptions() {
+  const set = new Set();
+  entries.forEach(e => { if (e.pos) set.add(e.pos); });
+  return Array.from(set).sort();
+}
+
+function renderPosFilters() {
+  const el = document.getElementById('pos-filters');
+  const options = collectPosOptions();
+  if (posFilter !== 'all' && posFilter !== 'none' && !options.includes(posFilter)) {
+    posFilter = 'all';
+    localStorage.setItem(FILTER_STORAGE, 'all');
+  }
+  const chips = [
+    { id: 'all', label: 'すべて' },
+    ...options.map(p => ({ id: p, label: POS_LABELS[p] || p })),
+  ];
+  if (entries.some(e => !e.pos)) chips.push({ id: 'none', label: '未設定' });
+  el.innerHTML = chips.map(c =>
+    `<button type="button" class="chip${posFilter === c.id ? ' active' : ''}" onclick="setPosFilter('${escAttr(c.id)}')">${escHtml(c.label)}</button>`
+  ).join('');
+}
+
+function escAttr(s) {
+  return String(s).replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+}
+
+function setPosFilter(value) {
+  posFilter = value;
+  localStorage.setItem(FILTER_STORAGE, value);
+  renderPosFilters();
+  render();
+}
+
+function onSortChange() {
+  sortMode = document.getElementById('sort-select').value;
+  localStorage.setItem(SORT_MODE_STORAGE, sortMode);
+  applyListOrder();
+  render();
+}
+
+async function persistConfirmedAt(id, confirmedAt) {
+  try {
+    await fetch(GAS_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify({ action: 'confirmCard', id, confirmedAt })
+    });
+  } catch (e) {
+    console.warn('confirmCard failed:', e);
+  }
 }
 
 function formatDisplayDate(value) {
@@ -495,8 +686,11 @@ function tapCard(id) {
   } else {
     e.show = false;
     e.idx = (e.idx + 1) % e.examples.length;
-    setCardSortTime(id, Date.now());
-    sortEntries();
+    const now = Date.now();
+    e.confirmedAt = now;
+    setCardSortTime(id, now);
+    persistConfirmedAt(id, now);
+    applyListOrder();
   }
   render();
 }
@@ -532,19 +726,39 @@ function scrollToListBottom() {
 function render() {
   const el = document.getElementById('cards');
   const cnt = document.getElementById('cnt');
+  const controls = document.getElementById('list-controls');
+  const sortSelect = document.getElementById('sort-select');
 
   if (!entries.length) {
     el.innerHTML = '<div class="empty"><div class="empty-icon">📝</div>まだ登録されていません</div>';
     cnt.textContent = '';
+    controls.classList.add('hidden');
     updateScrollFabVisibility();
     return;
   }
 
-  cnt.textContent = `${entries.length}件`;
+  controls.classList.remove('hidden');
+  sortSelect.value = sortMode;
+  renderPosFilters();
 
-  el.innerHTML = entries.map(e => {
+  const visible = getFilteredEntries();
+  const total = entries.length;
+  cnt.textContent = visible.length === total
+    ? `${total}件`
+    : `${visible.length} / ${total}件`;
+
+  if (!visible.length) {
+    el.innerHTML = '<div class="empty"><div class="empty-icon">🔍</div>該当するカードがありません</div>';
+    updateScrollFabVisibility();
+    return;
+  }
+
+  el.innerHTML = visible.map(e => {
     const ex = (e.examples && e.examples[e.idx]) || { en: '', ja: '' };
     const ipaHtml = e.ipa ? `<span class="ipa">${escHtml(e.ipa)}</span>` : '';
+    const posHtml = e.pos
+      ? `<span class="pos">${escHtml(POS_LABELS[e.pos] || e.pos)}</span>`
+      : '';
     const speakBtn = ex.en
       ? `<button type="button" class="speak-btn" onclick="speakSentence(event, ${e.id})" aria-label="英文を読み上げ">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -557,6 +771,7 @@ function render() {
     return `<div class="card" onclick="tapCard(${e.id})">
       <div class="card-meta">
         <div class="card-meta-left">
+          ${posHtml}
           <span class="keyword">${escHtml(e.keyword)}</span>
           ${ipaHtml}
         </div>
@@ -632,6 +847,7 @@ function highlightKeyword(text, keyword, input) {
 window.addEventListener('scroll', updateScrollTopVisibility, { passive: true });
 window.addEventListener('resize', updateScrollTopVisibility, { passive: true });
 
+document.getElementById('sort-select').value = sortMode;
 syncApiSectionVisibility();
 checkGasHealth();
 loadEntries();

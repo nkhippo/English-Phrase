@@ -12,6 +12,7 @@ function doPost(e) {
   const data = JSON.parse(e.postData.contents);
   if (data.action === 'save') return handleSave(data.entry);
   if (data.action === 'generateAndSave') return handleGenerateAndSave(data.input, data.note, data.apiKey);
+  if (data.action === 'confirmCard') return handleConfirmCard(data.id, data.confirmedAt);
   return jsonResponse({ error: 'unknown action' });
 }
 
@@ -21,15 +22,17 @@ function handleGetAll() {
   if (rows.length <= 1) return jsonResponse({ entries: [] });
 
   const entries = rows.slice(1).map(r => ({
-    id:       r[0],
-    input:    r[1],
-    keyword:  r[2],
-    examples: JSON.parse(r[3]),
-    date:     formatSheetDate(r[4]),
-    note:     r[5] || '',
-    ipa:      r[6] || '',
-    idx:      0,
-    show:     false
+    id:           r[0],
+    input:        r[1],
+    keyword:      r[2],
+    examples:     JSON.parse(r[3]),
+    date:         formatSheetDate(r[4]),
+    note:         r[5] || '',
+    ipa:          r[6] || '',
+    pos:          normalizePos(r[7]),
+    confirmedAt:  parseConfirmedAt(r[8]),
+    idx:          0,
+    show:         false
   })).reverse();
 
   return jsonResponse({ entries });
@@ -57,8 +60,10 @@ function handleGenerateAndSave(input, note, apiKey) {
       note: note || '',
       keyword: keyword,
       ipa: ipa,
+      pos: normalizePos(parsed.partOfSpeech || parsed.pos || parsed.part_of_speech),
       examples: parsed.examples,
-      date: Utilities.formatDate(new Date(), Session.getScriptTimeZone() || 'Asia/Tokyo', 'M/d')
+      date: Utilities.formatDate(new Date(), Session.getScriptTimeZone() || 'Asia/Tokyo', 'M/d'),
+      confirmedAt: ''
     };
     appendEntry(entry);
     return jsonResponse({ ok: true, entry: entry });
@@ -90,8 +95,55 @@ function appendEntry(entry) {
     JSON.stringify(entry.examples),
     entry.date,
     entry.note || '',
-    entry.ipa || ''
+    entry.ipa || '',
+    entry.pos || '',
+    entry.confirmedAt || ''
   ]);
+}
+
+function handleConfirmCard(id, confirmedAt) {
+  if (id == null || id === '') return jsonResponse({ error: 'id required' });
+  const ok = updateConfirmedAt(id, confirmedAt != null ? confirmedAt : Date.now());
+  if (!ok) return jsonResponse({ error: 'entry not found' });
+  return jsonResponse({ ok: true });
+}
+
+function updateConfirmedAt(id, confirmedAt) {
+  const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_NAME);
+  const rows = sheet.getDataRange().getValues();
+  for (let i = 1; i < rows.length; i++) {
+    if (String(rows[i][0]) === String(id)) {
+      sheet.getRange(i + 1, 9).setValue(Number(confirmedAt) || Date.now());
+      return true;
+    }
+  }
+  return false;
+}
+
+function parseConfirmedAt(cell) {
+  if (cell === '' || cell == null) return '';
+  if (Object.prototype.toString.call(cell) === '[object Date]' && !isNaN(cell.getTime())) {
+    return cell.getTime();
+  }
+  const n = Number(cell);
+  return isNaN(n) || n <= 0 ? '' : n;
+}
+
+function normalizePos(pos) {
+  const raw = String(pos || '').trim().toLowerCase();
+  if (!raw) return '';
+  const aliases = {
+    'n': 'noun', 'n.': 'noun', 'noun': 'noun',
+    'v': 'verb', 'v.': 'verb', 'verb': 'verb',
+    'adj': 'adjective', 'adj.': 'adjective', 'adjective': 'adjective',
+    'adv': 'adverb', 'adv.': 'adverb', 'adverb': 'adverb',
+    'prep': 'preposition', 'prep.': 'preposition', 'preposition': 'preposition',
+    'conj': 'conjunction', 'conj.': 'conjunction', 'conjunction': 'conjunction',
+    'pron': 'pronoun', 'pron.': 'pronoun', 'pronoun': 'pronoun',
+    'interj': 'interjection', 'interjection': 'interjection',
+    'idiom': 'idiom', 'phrase': 'phrase', 'expression': 'phrase'
+  };
+  return aliases[raw] || raw.replace(/\s+/g, ' ');
 }
 
 function generateExamples(input, note, apiKey) {
@@ -102,7 +154,7 @@ function generateExamples(input, note, apiKey) {
     `ユーザーが「${input}」を英語で学びたいと入力しました。${notePart}` +
     'この意図・単語・フレーズに合った英文例を5つ作成してください。日常会話・ビジネス・留学生活に自然なものを選んでください。\n' +
     '必ず次のJSONのみを返してください（前置き・説明・コードブロック禁止）。ipa は必須で空文字不可:\n' +
-    '{"keyword":"核となる英単語またはフレーズ（小文字）","ipa":"/IPA発音記号/","examples":[{"en":"英文1","ja":"日本語訳1"},{"en":"英文2","ja":"日本語訳2"},{"en":"英文3","ja":"日本語訳3"},{"en":"英文4","ja":"日本語訳4"},{"en":"英文5","ja":"日本語訳5"}]}';
+    '{"keyword":"核となる英単語またはフレーズ（小文字）","ipa":"/IPA発音記号/","partOfSpeech":"品詞（noun, verb, adjective, adverb, preposition, conjunction, pronoun, interjection, idiom, phrase のいずれか1つ）","examples":[{"en":"英文1","ja":"日本語訳1"},{"en":"英文2","ja":"日本語訳2"},{"en":"英文3","ja":"日本語訳3"},{"en":"英文4","ja":"日本語訳4"},{"en":"英文5","ja":"日本語訳5"}]}';
 
   const raw = callClaude(apiKey, prompt, 1500);
   const parsed = parseGeneratedJson(raw);
