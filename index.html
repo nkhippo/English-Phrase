@@ -147,6 +147,21 @@
     max-width: 100%;
   }
   .sort-select:focus { outline: none; border-color: var(--accent); }
+  .word-search-input {
+    flex: 1;
+    min-width: 0;
+    max-width: 100%;
+    padding: 5px 10px;
+    font-size: 12px;
+    font-family: 'DM Sans', sans-serif;
+    border: 1px solid var(--border-strong);
+    border-radius: 8px;
+    background: var(--surface);
+    color: var(--text);
+    transition: border-color 0.12s;
+  }
+  .word-search-input::placeholder { color: var(--faint); font-size: 11px; }
+  .word-search-input:focus { outline: none; border-color: var(--accent); }
 
   .card {
     position: relative;
@@ -385,6 +400,10 @@
       <div class="filter-chips" id="pos-filters"></div>
     </div>
     <div class="control-row">
+      <span class="control-label">検索</span>
+      <input type="search" class="word-search-input" id="word-search" placeholder="登録ワードで絞り込み" autocomplete="off" enterkeyhint="search" oninput="onWordSearchInput()">
+    </div>
+    <div class="control-row">
       <span class="control-label">並び</span>
       <select class="sort-select" id="sort-select" onchange="onSortChange()">
         <option value="registered-desc">登録日（新しい順）</option>
@@ -407,6 +426,7 @@ const GAS_URL = 'https://script.google.com/macros/s/AKfycbxCBrQjN8kX3_7xjkuYZAVj
 const API_KEY_STORAGE = 'phrase_anthropic_api_key';
 const SORT_STORAGE = 'phrase_card_sort_times';
 const FILTER_STORAGE = 'phrase_pos_filter';
+const SEARCH_STORAGE = 'phrase_word_search';
 const SORT_MODE_STORAGE = 'phrase_sort_mode';
 const POS_LABELS = {
   noun: 'noun', verb: 'verb', adjective: 'adj', adverb: 'adv',
@@ -415,6 +435,7 @@ const POS_LABELS = {
 };
 let entries = [];
 let posFilter = localStorage.getItem(FILTER_STORAGE) || 'all';
+let wordSearchQuery = localStorage.getItem(SEARCH_STORAGE) || '';
 let sortMode = localStorage.getItem(SORT_MODE_STORAGE) || 'registered-desc';
 
 function getApiKey() {
@@ -610,10 +631,32 @@ function applyListOrder() {
   });
 }
 
+function normalizeSearchText(s) {
+  return String(s || '').toLowerCase();
+}
+
+function entryMatchesWordSearch(e, query) {
+  const q = normalizeSearchText(query);
+  if (!q) return true;
+  const keyword = normalizeSearchText(e.keyword);
+  const input = normalizeSearchText(e.input);
+  return keyword.includes(q) || input.includes(q);
+}
+
 function getFilteredEntries() {
-  if (posFilter === 'all') return entries;
-  if (posFilter === 'none') return entries.filter(e => !e.pos);
-  return entries.filter(e => e.pos === posFilter);
+  let list = entries;
+  if (posFilter === 'none') list = list.filter(e => !e.pos);
+  else if (posFilter !== 'all') list = list.filter(e => e.pos === posFilter);
+  const q = wordSearchQuery.trim();
+  if (q) list = list.filter(e => entryMatchesWordSearch(e, q));
+  return list;
+}
+
+function onWordSearchInput() {
+  const el = document.getElementById('word-search');
+  wordSearchQuery = el ? el.value : '';
+  localStorage.setItem(SEARCH_STORAGE, wordSearchQuery);
+  render();
 }
 
 function collectPosOptions() {
@@ -739,6 +782,8 @@ function render() {
 
   controls.classList.remove('hidden');
   sortSelect.value = sortMode;
+  const searchInput = document.getElementById('word-search');
+  if (searchInput && searchInput.value !== wordSearchQuery) searchInput.value = wordSearchQuery;
   renderPosFilters();
 
   const visible = getFilteredEntries();
