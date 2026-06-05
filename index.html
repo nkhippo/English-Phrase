@@ -841,6 +841,44 @@ function escHtml(s) {
     .replace(/"/g, '&quot;');
 }
 
+const SPEAK_RATE = 0.78;
+const SPEAK_PITCH = 1.0;
+
+function getEnglishVoices() {
+  if (!('speechSynthesis' in window)) return [];
+  return window.speechSynthesis.getVoices().filter(v => /^en(-|_)/i.test(v.lang));
+}
+
+function pickEnglishVoice(voices) {
+  if (!voices.length) return null;
+  const prefer = patterns => {
+    for (const pattern of patterns) {
+      const voice = voices.find(v => pattern.test(v.name));
+      if (voice) return voice;
+    }
+    return null;
+  };
+  return prefer([
+    /ava/i,
+    /premium|プレミアム/i,
+    /enhanced|拡張/i,
+    /samantha/i,
+    /alex/i,
+    /karen/i,
+    /daniel/i
+  ]) || voices.find(v => /^en-US/i.test(v.lang)) || voices[0];
+}
+
+function buildUtterance(text) {
+  const u = new SpeechSynthesisUtterance(text);
+  u.lang = 'en-US';
+  u.rate = SPEAK_RATE;
+  u.pitch = SPEAK_PITCH;
+  const voice = pickEnglishVoice(getEnglishVoices());
+  if (voice) u.voice = voice;
+  return u;
+}
+
 function speakSentence(ev, id) {
   ev.stopPropagation();
   const e = entries.find(x => x.id === id);
@@ -850,11 +888,30 @@ function speakSentence(ev, id) {
     alert('このブラウザは音声読み上げに対応していません。');
     return;
   }
-  window.speechSynthesis.cancel();
-  const u = new SpeechSynthesisUtterance(text);
-  u.lang = 'en-US';
-  u.rate = 0.95;
-  window.speechSynthesis.speak(u);
+
+  const synth = window.speechSynthesis;
+  synth.cancel();
+
+  const speak = () => synth.speak(buildUtterance(text));
+
+  if (getEnglishVoices().length) {
+    speak();
+    return;
+  }
+
+  const onVoicesChanged = () => {
+    synth.removeEventListener('voiceschanged', onVoicesChanged);
+    speak();
+  };
+  synth.addEventListener('voiceschanged', onVoicesChanged);
+  synth.getVoices();
+}
+
+if ('speechSynthesis' in window) {
+  window.speechSynthesis.addEventListener('voiceschanged', () => {
+    getEnglishVoices();
+  });
+  window.speechSynthesis.getVoices();
 }
 
 function escapeRegExp(s) {
