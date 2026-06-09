@@ -31,12 +31,12 @@
   .container { max-width: 500px; margin: 0 auto; padding: 1.5rem 1rem 4rem; }
 
   .header { margin-bottom: 2rem; padding-bottom: 1.25rem; border-bottom: 1px solid var(--border); }
+  .header-row { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
   .header h1 {
     font-family: 'DM Serif Display', serif;
     font-size: 26px; font-weight: 400;
     letter-spacing: -0.02em; color: var(--text);
   }
-  .header p { font-size: 13px; color: var(--muted); margin-top: 2px; }
 
   .input-section {
     background: var(--surface);
@@ -341,7 +341,7 @@
   .api-status.ok { color: var(--accent); }
   .hidden { display: none !important; }
   .api-key-link {
-    margin-top: 8px;
+    flex-shrink: 0;
     padding: 0;
     border: none;
     background: none;
@@ -371,9 +371,10 @@
 <body>
 <div class="container">
   <header class="header">
-    <h1>Phrase</h1>
-    <p>単語・フレーズを入力するとAIが例文を生成します</p>
-    <button type="button" class="api-key-link hidden" id="api-key-toggle" onclick="showApiSection()">APIキーを変更</button>
+    <div class="header-row">
+      <h1>Phrase</h1>
+      <button type="button" class="api-key-link hidden" id="api-key-toggle" onclick="showApiSection()">APIキーを変更</button>
+    </div>
   </header>
 
   <div class="gas-banner hidden" id="gas-banner">
