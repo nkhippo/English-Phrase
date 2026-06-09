@@ -408,6 +408,76 @@
   .gas-banner strong { display: block; margin-bottom: 6px; color: var(--danger); }
   .gas-banner ol { margin: 8px 0 0 1.1rem; padding: 0; }
   .gas-banner li { margin-bottom: 4px; }
+
+  .review-section {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 0.75rem 1rem 0.875rem;
+    margin-bottom: 0.625rem;
+  }
+  .review-section .section-title { margin-bottom: 10px; }
+  .review-en {
+    font-size: 15px;
+    line-height: 1.55;
+    color: var(--text);
+    margin-bottom: 6px;
+  }
+  .review-blank {
+    display: inline-block;
+    min-width: 5em;
+    border-bottom: 2px solid var(--accent);
+    color: var(--faint);
+    font-weight: 500;
+    letter-spacing: 0.12em;
+    text-align: center;
+    vertical-align: baseline;
+    padding: 0 2px;
+  }
+  .review-ja {
+    font-size: 13px;
+    color: var(--muted);
+    line-height: 1.55;
+    margin-bottom: 10px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--border);
+  }
+  .review-input {
+    width: 100%;
+    padding: 9px 12px;
+    font-size: 14px;
+    font-family: 'DM Sans', sans-serif;
+    border: 1px solid var(--border-strong);
+    border-radius: 8px;
+    background: var(--bg);
+    color: var(--text);
+    margin-bottom: 8px;
+    transition: border-color 0.15s;
+  }
+  .review-input:focus { outline: none; border-color: var(--accent); }
+  .review-input::placeholder { color: var(--faint); font-size: 13px; }
+  .review-input.correct { border-color: #3B6D11; background: #EAF3DE; }
+  .review-input.incorrect { border-color: #A32D2D; background: #FCEBEB; }
+  .review-result {
+    margin-top: 8px;
+    padding: 8px 10px;
+    border-radius: 8px;
+    font-size: 13px;
+    line-height: 1.5;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+  .review-result.correct { background: #EAF3DE; color: #27500A; }
+  .review-result.incorrect { background: #FCEBEB; color: #791F1F; }
+  .review-mark {
+    font-size: 18px;
+    font-weight: 700;
+    line-height: 1;
+    flex-shrink: 0;
+  }
+  .review-answer-text { font-weight: 500; }
 </style>
 </head>
 <body>
@@ -452,6 +522,18 @@
     </div>
     <button class="save-btn" id="btn" onclick="saveEntry()">保存する</button>
     <div class="status" id="st"></div>
+  </div>
+
+  <div class="review-section hidden" id="review-section">
+    <div class="section-title">復習</div>
+    <div class="review-en" id="review-en"></div>
+    <div class="review-ja" id="review-ja"></div>
+    <input type="text" id="review-input" class="review-input" placeholder="穴埋めの語を入力" autocomplete="off" enterkeyhint="done" onkeydown="onReviewInputKeydown(event)">
+    <button type="button" class="save-btn" id="review-btn" onclick="onReviewAction()">答え合わせ</button>
+    <div class="review-result hidden" id="review-result">
+      <span class="review-mark" id="review-mark"></span>
+      <span class="review-answer-text" id="review-answer-text"></span>
+    </div>
   </div>
 
   <div class="list-section hidden" id="list-section">
@@ -518,6 +600,170 @@ let entries = [];
 let posFilter = localStorage.getItem(FILTER_STORAGE) || 'all';
 let wordSearchQuery = localStorage.getItem(SEARCH_STORAGE) || '';
 let sortMode = localStorage.getItem(SORT_MODE_STORAGE) || 'registered-desc';
+
+let reviewState = {
+  entryId: null,
+  exampleIdx: null,
+  correctTerm: '',
+  checked: false,
+  isCorrect: false
+};
+
+function normalizeReviewAnswer(s) {
+  return String(s || '').toLowerCase().replace(/\s+/g, ' ').trim();
+}
+
+function getReviewableEntries() {
+  return entries.filter(e =>
+    Array.isArray(e.examples) && e.examples.length >= 2 &&
+    e.examples.slice(1, 5).some(ex => ex && ex.en && ex.ja)
+  );
+}
+
+function findTermInSentence(en, keyword, input) {
+  for (const term of [keyword, input]) {
+    const t = String(term || '').trim();
+    if (!t) continue;
+    const re = new RegExp(escapeRegExp(t), 'i');
+    const match = en.match(re);
+    if (match) return { term: t, matched: match[0] };
+  }
+  return null;
+}
+
+function makeClozeHtml(en, keyword, input) {
+  for (const term of [keyword, input]) {
+    const t = String(term || '').trim();
+    if (!t) continue;
+    const re = new RegExp(escapeRegExp(t), 'i');
+    const match = en.match(re);
+    if (match && match.index != null) {
+      const before = escHtml(en.slice(0, match.index));
+      const after = escHtml(en.slice(match.index + match[0].length));
+      return before + '<span class="review-blank">______</span>' + after;
+    }
+  }
+  return escHtml(en);
+}
+
+function pickRandomReviewQuestion(prevId, prevIdx) {
+  const pool = getReviewableEntries();
+  if (!pool.length) return null;
+
+  const allCandidates = [];
+  const otherCandidates = [];
+  pool.forEach(e => {
+    for (let i = 1; i < Math.min(e.examples.length, 5); i++) {
+      const ex = e.examples[i];
+      if (!ex || !ex.en || !ex.ja) continue;
+      if (!findTermInSentence(ex.en, e.keyword, e.input)) continue;
+      const item = { entry: e, exampleIdx: i };
+      allCandidates.push(item);
+      if (!(e.id === prevId && i === prevIdx)) otherCandidates.push(item);
+    }
+  });
+  const list = otherCandidates.length ? otherCandidates : allCandidates;
+  if (!list.length) return null;
+  return list[Math.floor(Math.random() * list.length)];
+}
+
+function loadReviewQuestion() {
+  const picked = pickRandomReviewQuestion(reviewState.entryId, reviewState.exampleIdx);
+  const section = document.getElementById('review-section');
+  if (!picked) {
+    section.classList.add('hidden');
+    reviewState = { entryId: null, exampleIdx: null, correctTerm: '', checked: false, isCorrect: false };
+    return;
+  }
+
+  const { entry, exampleIdx } = picked;
+  const ex = entry.examples[exampleIdx];
+  const found = findTermInSentence(ex.en, entry.keyword, entry.input);
+
+  reviewState = {
+    entryId: entry.id,
+    exampleIdx,
+    correctTerm: found ? found.matched : (entry.keyword || entry.input || ''),
+    checked: false,
+    isCorrect: false
+  };
+
+  section.classList.remove('hidden');
+  document.getElementById('review-en').innerHTML = makeClozeHtml(ex.en, entry.keyword, entry.input);
+  document.getElementById('review-ja').textContent = ex.ja;
+
+  const input = document.getElementById('review-input');
+  input.value = '';
+  input.disabled = false;
+  input.className = 'review-input';
+
+  const result = document.getElementById('review-result');
+  result.className = 'review-result hidden';
+  document.getElementById('review-mark').textContent = '';
+  document.getElementById('review-answer-text').textContent = '';
+
+  const btn = document.getElementById('review-btn');
+  btn.textContent = '答え合わせ';
+  btn.disabled = false;
+}
+
+function isReviewAnswerCorrect(userAnswer, keyword, input) {
+  const a = normalizeReviewAnswer(userAnswer);
+  if (!a) return false;
+  return [keyword, input].filter(Boolean).some(term => normalizeReviewAnswer(term) === a);
+}
+
+function onReviewAction() {
+  if (reviewState.checked) {
+    loadReviewQuestion();
+    document.getElementById('review-input').focus();
+    return;
+  }
+
+  const input = document.getElementById('review-input');
+  const userAnswer = input.value.trim();
+  if (!userAnswer) {
+    input.focus();
+    return;
+  }
+
+  const entry = entries.find(e => e.id === reviewState.entryId);
+  if (!entry) {
+    loadReviewQuestion();
+    return;
+  }
+
+  const correct = isReviewAnswerCorrect(userAnswer, entry.keyword, entry.input);
+  reviewState.checked = true;
+  reviewState.isCorrect = correct;
+
+  input.disabled = true;
+  input.classList.toggle('correct', correct);
+  input.classList.toggle('incorrect', !correct);
+
+  const result = document.getElementById('review-result');
+  result.className = 'review-result ' + (correct ? 'correct' : 'incorrect');
+  document.getElementById('review-mark').textContent = correct ? '○' : '×';
+  document.getElementById('review-answer-text').textContent =
+    '正解: ' + (reviewState.correctTerm || entry.keyword || entry.input);
+
+  document.getElementById('review-btn').textContent = '次へ';
+}
+
+function onReviewInputKeydown(ev) {
+  if (ev.key === 'Enter') {
+    ev.preventDefault();
+    onReviewAction();
+  }
+}
+
+function renderReviewSection() {
+  if (!getReviewableEntries().length) {
+    document.getElementById('review-section').classList.add('hidden');
+    return;
+  }
+  if (reviewState.entryId == null) loadReviewQuestion();
+}
 
 function toggleFilterPanel() {
   const panel = document.getElementById('list-controls');
@@ -619,6 +865,7 @@ async function loadEntries() {
     entries = [];
   }
   render();
+  renderReviewSection();
 }
 
 // ── 保存 ──
@@ -657,6 +904,7 @@ async function saveEntry() {
     inp.value = '';
     noteEl.value = '';
     render();
+    renderReviewSection();
     st.className = 'status';
     st.innerHTML = '✓ 保存しました（例文5件）';
     setTimeout(() => { st.innerHTML = ''; }, 3000);
@@ -832,6 +1080,10 @@ async function deleteEntry(ev, id) {
     const data = await res.json();
     if (!data.ok) throw new Error(data.error || '削除に失敗しました');
     entries = entries.filter(x => x.id !== id);
+    if (reviewState.entryId === id) {
+      reviewState.entryId = null;
+      loadReviewQuestion();
+    }
     applyListOrder();
     render();
   } catch (err) {
@@ -903,6 +1155,7 @@ function render() {
     el.innerHTML = '<div class="empty"><div class="empty-icon">📝</div>まだ登録されていません</div>';
     cnt.textContent = '';
     listSection.classList.add('hidden');
+    document.getElementById('review-section').classList.add('hidden');
     updateScrollFabVisibility();
     return;
   }
