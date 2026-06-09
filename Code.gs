@@ -173,6 +173,10 @@ function generateExamples(input, note, apiKey) {
   const prompt =
     `ユーザーが「${input}」を英語で学びたいと入力しました。${notePart}` +
     'この意図・単語・フレーズに合った英文例を5つ作成してください。日常会話・ビジネス・留学生活に自然なものを選んでください。\n' +
+    '例文の形式ルール:\n' +
+    '- 各例文は1つの完結した文にすること（A: / B: などの対話形式は使わない）\n' +
+    '- 複数話者の会話を1つの en フィールドにまとめないこと\n' +
+    '- 会話調にしたい場合も、登録ワードを含む話者の発話だけを1文として書くこと\n' +
     '必ず次のJSONのみを返してください（前置き・説明・コードブロック禁止）。ipa は必須で空文字不可:\n' +
     '{"keyword":"核となる英単語またはフレーズ（小文字）","ipa":"/IPA発音記号/","partOfSpeech":"品詞（noun, verb, adjective, adverb, preposition, conjunction, pronoun, interjection, idiom, phrase のいずれか1つ）","examples":[{"en":"英文1","ja":"日本語訳1"},{"en":"英文2","ja":"日本語訳2"},{"en":"英文3","ja":"日本語訳3"},{"en":"英文4","ja":"日本語訳4"},{"en":"英文5","ja":"日本語訳5"}]}';
 

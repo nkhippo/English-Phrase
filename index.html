@@ -430,7 +430,9 @@
     min-width: 0;
     font-size: 15px;
     line-height: 1.55;
+    min-height: calc(1.55em * 2);
     color: var(--text);
+    overflow-wrap: break-word;
   }
   .review-speak-btn { flex-shrink: 0; margin-top: 1px; }
   .review-blank {
@@ -439,24 +441,20 @@
     vertical-align: baseline;
     padding: 0 1px 1px;
     line-height: 1.2;
+    box-sizing: content-box;
   }
   .review-blanks-multi {
-    display: inline-flex;
-    align-items: baseline;
-    gap: 0.4em;
-    flex-wrap: wrap;
+    display: inline;
+    white-space: nowrap;
     vertical-align: baseline;
   }
-  .review-blank-part { min-width: 2em; }
-  .review-hint-letter {
-    color: var(--accent-text);
-    font-weight: 700;
-    letter-spacing: 0;
-  }
+  .review-blank-part { min-width: 2ch; }
+  .review-blank-sep { white-space: pre; }
   .review-ja {
     font-size: 13px;
     color: var(--muted);
     line-height: 1.55;
+    white-space: pre-line;
     margin-bottom: 10px;
     padding-bottom: 8px;
     border-bottom: 1px solid var(--border);
@@ -666,21 +664,25 @@ function findTermInSentence(en, keyword, input) {
 
 function buildBlankHtml(matchedText) {
   const words = String(matchedText || '').trim().split(/\s+/).filter(Boolean);
-  if (!words.length) return '<span class="review-blank review-blank-part" style="min-width:3em"></span>';
+  if (!words.length) return '<span class="review-blank review-blank-part" style="min-width:3ch"></span>';
 
-  function oneBlank(word, showHint) {
+  function oneBlank(word) {
     const widthCh = Math.max(word.length, 2);
-    if (showHint) {
-      const hint = word.charAt(0);
-      return `<span class="review-blank review-blank-part" style="min-width:${widthCh}ch"><span class="review-hint-letter">${escHtml(hint)}</span></span>`;
-    }
     return `<span class="review-blank review-blank-part" style="min-width:${widthCh}ch" aria-hidden="true"></span>`;
   }
 
-  if (words.length === 1) return oneBlank(words[0], true);
+  if (words.length === 1) return oneBlank(words[0]);
 
-  const parts = words.map((w, i) => oneBlank(w, i === 0));
-  return `<span class="review-blanks-multi" title="${words.length}語">${parts.join('')}</span>`;
+  const parts = words.map(w => oneBlank(w));
+  return `<span class="review-blanks-multi" title="${words.length}語">${parts.join('<span class="review-blank-sep"> </span>')}</span>`;
+}
+
+function applyDialogueBreaksEn(html) {
+  return html.replace(/\s+(B:)/g, '<br>B:');
+}
+
+function applyDialogueBreaksJa(text) {
+  return String(text || '').replace(/\s+(B[：:])/gi, '\n$1');
 }
 
 function makeClozeHtml(en, keyword, input) {
@@ -692,10 +694,10 @@ function makeClozeHtml(en, keyword, input) {
     if (match && match.index != null) {
       const before = escHtml(en.slice(0, match.index));
       const after = escHtml(en.slice(match.index + match[0].length));
-      return before + buildBlankHtml(match[0]) + after;
+      return applyDialogueBreaksEn(before + buildBlankHtml(match[0]) + after);
     }
   }
-  return escHtml(en);
+  return applyDialogueBreaksEn(escHtml(en));
 }
 
 function buildReviewCandidates(prevId, prevIdx) {
@@ -763,7 +765,7 @@ function loadReviewQuestion() {
 
   section.classList.remove('hidden');
   document.getElementById('review-en').innerHTML = makeClozeHtml(ex.en, entry.keyword, entry.input);
-  document.getElementById('review-ja').textContent = ex.ja;
+  document.getElementById('review-ja').textContent = applyDialogueBreaksJa(ex.ja);
 
   const input = document.getElementById('review-input');
   input.value = '';
