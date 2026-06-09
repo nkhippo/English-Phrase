@@ -425,14 +425,27 @@
   }
   .review-blank {
     display: inline-block;
-    min-width: 5em;
+    min-width: 3em;
     border-bottom: 2px solid var(--accent);
     color: var(--faint);
     font-weight: 500;
-    letter-spacing: 0.12em;
-    text-align: center;
+    letter-spacing: 0.08em;
+    text-align: left;
     vertical-align: baseline;
     padding: 0 2px;
+  }
+  .review-blanks-multi {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 0.4em;
+    flex-wrap: wrap;
+    vertical-align: baseline;
+  }
+  .review-blank-part { min-width: 2em; }
+  .review-hint-letter {
+    color: var(--accent-text);
+    font-weight: 700;
+    letter-spacing: 0;
   }
   .review-ja {
     font-size: 13px;
@@ -634,6 +647,26 @@ function findTermInSentence(en, keyword, input) {
   return null;
 }
 
+function buildBlankHtml(matchedText) {
+  const words = String(matchedText || '').trim().split(/\s+/).filter(Boolean);
+  if (!words.length) return '<span class="review-blank">______</span>';
+
+  function oneBlank(word, showHint) {
+    const hint = word.charAt(0);
+    const restLen = Math.max(word.length - (showHint ? 1 : 0), showHint ? 2 : 2);
+    const rest = '_'.repeat(restLen);
+    if (showHint) {
+      return `<span class="review-blank review-blank-part"><span class="review-hint-letter">${escHtml(hint)}</span>${rest}</span>`;
+    }
+    return `<span class="review-blank review-blank-part">${rest}</span>`;
+  }
+
+  if (words.length === 1) return oneBlank(words[0], true);
+
+  const parts = words.map((w, i) => oneBlank(w, i === 0));
+  return `<span class="review-blanks-multi" title="${words.length}語">${parts.join('')}</span>`;
+}
+
 function makeClozeHtml(en, keyword, input) {
   for (const term of [keyword, input]) {
     const t = String(term || '').trim();
@@ -643,7 +676,7 @@ function makeClozeHtml(en, keyword, input) {
     if (match && match.index != null) {
       const before = escHtml(en.slice(0, match.index));
       const after = escHtml(en.slice(match.index + match[0].length));
-      return before + '<span class="review-blank">______</span>' + after;
+      return before + buildBlankHtml(match[0]) + after;
     }
   }
   return escHtml(en);
