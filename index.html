@@ -28,9 +28,9 @@
     font-size: 15px;
     line-height: 1.6;
   }
-  .container { max-width: 500px; margin: 0 auto; padding: 1.5rem 1rem 4rem; }
+  .container { max-width: 500px; margin: 0 auto; padding: 1rem 1rem 4rem; }
 
-  .header { margin-bottom: 2rem; padding-bottom: 1.25rem; border-bottom: 1px solid var(--border); }
+  .header { margin-bottom: 0.75rem; }
   .header-row { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
   .header h1 {
     font-family: 'DM Serif Display', serif;
@@ -203,7 +203,7 @@
     background: var(--surface);
     border: 1px solid var(--border);
     border-radius: 12px;
-    padding: 10px 44px 10px 14px;
+    padding: 10px 52px 10px 14px;
     margin-bottom: 7px;
     cursor: pointer;
     transition: border-color 0.15s, transform 0.1s;
@@ -211,7 +211,7 @@
   }
   .card:hover { border-color: var(--border-strong); }
   .card:active { transform: scale(0.99); }
-  .card-meta { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 6px; gap: 8px; padding-right: 30px; }
+  .card-meta { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 6px; gap: 8px; }
   .card-meta-left { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 8px; min-width: 0; flex: 1; }
   .ipa {
     font-size: 12px;
@@ -219,11 +219,21 @@
     letter-spacing: 0.02em;
   }
   .card-body { position: relative; }
-  .speak-btn {
+  .card-actions {
     position: absolute;
+    top: 10px;
     right: 10px;
     bottom: 10px;
+    width: 36px;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    align-items: center;
     z-index: 2;
+    pointer-events: none;
+  }
+  .card-actions > * { pointer-events: auto; }
+  .speak-btn {
     width: 36px;
     height: 36px;
     padding: 0;
@@ -242,10 +252,6 @@
   .speak-btn:active { transform: scale(0.96); }
   .speak-btn svg { width: 18px; height: 18px; flex-shrink: 0; pointer-events: none; }
   .delete-btn {
-    position: absolute;
-    top: 8px;
-    right: 10px;
-    z-index: 2;
     width: 28px;
     height: 28px;
     padding: 0;
@@ -935,12 +941,6 @@ function render() {
         </button>`
       : '';
     return `<div class="card" onclick="tapCard(${e.id})">
-      <button type="button" class="delete-btn" onclick="deleteEntry(event, ${e.id})" aria-label="削除">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-          <polyline points="3 6 5 6 21 6"></polyline>
-          <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
-        </svg>
-      </button>
       <div class="card-meta">
         <div class="card-meta-left">
           ${posHtml}
@@ -953,7 +953,15 @@ function render() {
         <div class="en-text">${highlightKeyword(ex.en, e.keyword, e.input)}</div>
       </div>
       ${e.show ? `<div class="ja-text">${escHtml(ex.ja)}</div>` : ''}
-      ${speakBtn}
+      <div class="card-actions">
+        <button type="button" class="delete-btn" onclick="deleteEntry(event, ${e.id})" aria-label="削除">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <polyline points="3 6 5 6 21 6"></polyline>
+            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+          </svg>
+        </button>
+        ${speakBtn}
+      </div>
     </div>`;
   }).join('');
 
