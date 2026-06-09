@@ -417,12 +417,20 @@
     margin-bottom: 0.625rem;
   }
   .review-section .section-title { margin-bottom: 10px; }
+  .review-en-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    margin-bottom: 6px;
+  }
   .review-en {
+    flex: 1;
+    min-width: 0;
     font-size: 15px;
     line-height: 1.55;
     color: var(--text);
-    margin-bottom: 6px;
   }
+  .review-speak-btn { flex-shrink: 0; margin-top: 1px; }
   .review-blank {
     display: inline-block;
     border-bottom: 2px solid var(--accent);
@@ -570,7 +578,16 @@
 
   <div class="review-section hidden" id="review-section">
     <div class="section-title">復習</div>
-    <div class="review-en" id="review-en"></div>
+    <div class="review-en-row">
+      <div class="review-en" id="review-en"></div>
+      <button type="button" class="speak-btn review-speak-btn" onclick="speakReviewSentence(event)" aria-label="英文を読み上げ">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon>
+          <path d="M15.54 8.46a5 5 0 0 1 0 7.07"></path>
+          <path d="M19.07 4.93a10 10 0 0 1 0 14.14"></path>
+        </svg>
+      </button>
+    </div>
     <div class="review-ja" id="review-ja"></div>
     <input type="text" id="review-input" class="review-input" placeholder="穴埋めの語を入力" autocomplete="off" enterkeyhint="done" onkeydown="onReviewInputKeydown(event)">
     <button type="button" class="save-btn" id="review-btn" onclick="onReviewAction()">答え合わせ</button>
@@ -615,6 +632,7 @@ let reviewState = {
   entryId: null,
   exampleIdx: null,
   correctTerm: '',
+  fullSentence: '',
   checked: false,
   isCorrect: false
 };
@@ -724,7 +742,7 @@ function loadReviewQuestion() {
   const section = document.getElementById('review-section');
   if (!picked) {
     section.classList.add('hidden');
-    reviewState = { entryId: null, exampleIdx: null, correctTerm: '', checked: false, isCorrect: false };
+    reviewState = { entryId: null, exampleIdx: null, correctTerm: '', fullSentence: '', checked: false, isCorrect: false };
     return;
   }
 
@@ -736,6 +754,7 @@ function loadReviewQuestion() {
     entryId: entry.id,
     exampleIdx,
     correctTerm: found ? found.matched : (entry.keyword || entry.input || ''),
+    fullSentence: ex.en,
     checked: false,
     isCorrect: false
   };
@@ -1335,10 +1354,7 @@ function buildUtterance(text) {
   return u;
 }
 
-function speakSentence(ev, id) {
-  ev.stopPropagation();
-  const e = entries.find(x => x.id === id);
-  const text = e?.examples?.[e.idx]?.en;
+function speakEnglishText(text) {
   if (!text) return;
   if (!('speechSynthesis' in window)) {
     alert('このブラウザは音声読み上げに対応していません。');
@@ -1361,6 +1377,17 @@ function speakSentence(ev, id) {
   };
   synth.addEventListener('voiceschanged', onVoicesChanged);
   synth.getVoices();
+}
+
+function speakSentence(ev, id) {
+  ev.stopPropagation();
+  const e = entries.find(x => x.id === id);
+  speakEnglishText(e?.examples?.[e.idx]?.en);
+}
+
+function speakReviewSentence(ev) {
+  ev.stopPropagation();
+  speakEnglishText(reviewState.fullSentence);
 }
 
 if ('speechSynthesis' in window) {
