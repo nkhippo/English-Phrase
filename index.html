@@ -613,11 +613,14 @@ function normalizeReviewAnswer(s) {
   return String(s || '').toLowerCase().replace(/\s+/g, ' ').trim();
 }
 
+function isReviewableEntry(e) {
+  return Array.isArray(e.examples) && e.examples.length >= 2 &&
+    e.examples.slice(1, 5).some(ex => ex && ex.en && ex.ja);
+}
+
+/** カード一覧と同じ絞り込み・並び順のうち、復習可能なカード */
 function getReviewableEntries() {
-  return entries.filter(e =>
-    Array.isArray(e.examples) && e.examples.length >= 2 &&
-    e.examples.slice(1, 5).some(ex => ex && ex.en && ex.ja)
-  );
+  return getFilteredEntries().filter(isReviewableEntry);
 }
 
 function findTermInSentence(en, keyword, input) {
@@ -646,29 +649,49 @@ function makeClozeHtml(en, keyword, input) {
   return escHtml(en);
 }
 
-function pickRandomReviewQuestion(prevId, prevIdx) {
-  const pool = getReviewableEntries();
-  if (!pool.length) return null;
-
+function buildReviewCandidates(prevId, prevIdx) {
+  const ordered = getReviewableEntries();
   const allCandidates = [];
   const otherCandidates = [];
-  pool.forEach(e => {
-    for (let i = 1; i < Math.min(e.examples.length, 5); i++) {
-      const ex = e.examples[i];
+  ordered.forEach((entry, rank) => {
+    const weight = ordered.length - rank;
+    for (let i = 1; i < Math.min(entry.examples.length, 5); i++) {
+      const ex = entry.examples[i];
       if (!ex || !ex.en || !ex.ja) continue;
-      if (!findTermInSentence(ex.en, e.keyword, e.input)) continue;
-      const item = { entry: e, exampleIdx: i };
+      if (!findTermInSentence(ex.en, entry.keyword, entry.input)) continue;
+      const item = { entry, exampleIdx: i, weight };
       allCandidates.push(item);
-      if (!(e.id === prevId && i === prevIdx)) otherCandidates.push(item);
+      if (!(entry.id === prevId && i === prevIdx)) otherCandidates.push(item);
     }
   });
-  const list = otherCandidates.length ? otherCandidates : allCandidates;
+  return otherCandidates.length ? otherCandidates : allCandidates;
+}
+
+function pickWeightedReviewQuestion(prevId, prevIdx) {
+  const list = buildReviewCandidates(prevId, prevIdx);
   if (!list.length) return null;
-  return list[Math.floor(Math.random() * list.length)];
+  const totalWeight = list.reduce((sum, c) => sum + c.weight, 0);
+  let r = Math.random() * totalWeight;
+  for (const c of list) {
+    r -= c.weight;
+    if (r <= 0) return c;
+  }
+  return list[list.length - 1];
+}
+
+function confirmEntryReview(id) {
+  const e = entries.find(x => x.id === id);
+  if (!e) return;
+  const now = Date.now();
+  e.confirmedAt = now;
+  setCardSortTime(id, now);
+  persistConfirmedAt(id, now);
+  applyListOrder();
+  render();
 }
 
 function loadReviewQuestion() {
-  const picked = pickRandomReviewQuestion(reviewState.entryId, reviewState.exampleIdx);
+  const picked = pickWeightedReviewQuestion(reviewState.entryId, reviewState.exampleIdx);
   const section = document.getElementById('review-section');
   if (!picked) {
     section.classList.add('hidden');
@@ -736,6 +759,8 @@ function onReviewAction() {
   const correct = isReviewAnswerCorrect(userAnswer, entry.keyword, entry.input);
   reviewState.checked = true;
   reviewState.isCorrect = correct;
+
+  if (correct) confirmEntryReview(entry.id);
 
   input.disabled = true;
   input.classList.toggle('correct', correct);
