@@ -13,6 +13,7 @@ function doPost(e) {
   if (data.action === 'save') return handleSave(data.entry);
   if (data.action === 'generateAndSave') return handleGenerateAndSave(data.input, data.note, data.apiKey);
   if (data.action === 'confirmCard') return handleConfirmCard(data.id, data.confirmedAt);
+  if (data.action === 'deleteEntry') return handleDeleteEntry(data.id);
   return jsonResponse({ error: 'unknown action' });
 }
 
@@ -114,6 +115,25 @@ function updateConfirmedAt(id, confirmedAt) {
   for (let i = 1; i < rows.length; i++) {
     if (String(rows[i][0]) === String(id)) {
       sheet.getRange(i + 1, 9).setValue(Number(confirmedAt) || Date.now());
+      return true;
+    }
+  }
+  return false;
+}
+
+function handleDeleteEntry(id) {
+  if (id == null || id === '') return jsonResponse({ error: 'id required' });
+  const ok = deleteEntryById(id);
+  if (!ok) return jsonResponse({ error: 'entry not found' });
+  return jsonResponse({ ok: true });
+}
+
+function deleteEntryById(id) {
+  const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_NAME);
+  const rows = sheet.getDataRange().getValues();
+  for (let i = 1; i < rows.length; i++) {
+    if (String(rows[i][0]) === String(id)) {
+      sheet.deleteRow(i + 1);
       return true;
     }
   }

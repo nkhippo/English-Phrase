@@ -176,7 +176,7 @@
   }
   .card:hover { border-color: var(--border-strong); }
   .card:active { transform: scale(0.99); }
-  .card-meta { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 6px; gap: 8px; }
+  .card-meta { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 6px; gap: 8px; padding-right: 30px; }
   .card-meta-left { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 8px; min-width: 0; flex: 1; }
   .ipa {
     font-size: 12px;
@@ -206,6 +206,27 @@
   .speak-btn:hover { background: var(--accent-light); border-color: var(--accent); }
   .speak-btn:active { transform: scale(0.96); }
   .speak-btn svg { width: 18px; height: 18px; flex-shrink: 0; pointer-events: none; }
+  .delete-btn {
+    position: absolute;
+    top: 8px;
+    right: 10px;
+    z-index: 2;
+    width: 28px;
+    height: 28px;
+    padding: 0;
+    border: 1px solid var(--border);
+    border-radius: 7px;
+    background: var(--bg);
+    color: var(--faint);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.12s, border-color 0.12s, color 0.12s;
+  }
+  .delete-btn:hover { background: #fde8e8; border-color: #e8a0a0; color: #c44; }
+  .delete-btn:active { transform: scale(0.96); }
+  .delete-btn svg { width: 14px; height: 14px; flex-shrink: 0; pointer-events: none; }
   .pos {
     font-size: 10px;
     font-weight: 600;
@@ -422,7 +443,7 @@
 <button type="button" class="scroll-fab scroll-fab-bottom hidden" id="scroll-bottom" onclick="scrollToListBottom()" aria-label="一覧の末尾へ">↓</button>
 
 <script>
-const GAS_URL = 'https://script.google.com/macros/s/AKfycbxCBrQjN8kX3_7xjkuYZAVjZEX51hnwa6sR6zq2ZrzypLGc9Sf4PAzLlUTsEPxb3b_z/exec';
+const GAS_URL = 'https://script.google.com/macros/s/AKfycbwqQvI0OFLuN2oZeYsF5hDVzmfY_Yta4GSPv6DkYp0eA6tGfmSu59sE7vHQrIYE-MIk/exec';
 const API_KEY_STORAGE = 'phrase_anthropic_api_key';
 const SORT_STORAGE = 'phrase_card_sort_times';
 const FILTER_STORAGE = 'phrase_pos_filter';
@@ -712,6 +733,29 @@ async function persistConfirmedAt(id, confirmedAt) {
   }
 }
 
+async function deleteEntry(ev, id) {
+  ev.stopPropagation();
+  const e = entries.find(x => x.id === id);
+  if (!e) return;
+  const label = e.keyword || e.input || 'このカード';
+  if (!confirm(`「${label}」を削除しますか？\nスプレッドシートからも完全に削除されます。`)) return;
+
+  try {
+    const res = await fetch(GAS_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify({ action: 'deleteEntry', id })
+    });
+    const data = await res.json();
+    if (!data.ok) throw new Error(data.error || '削除に失敗しました');
+    entries = entries.filter(x => x.id !== id);
+    applyListOrder();
+    render();
+  } catch (err) {
+    alert(err.message || '削除に失敗しました。しばらくしてからもう一度お試しください。');
+  }
+}
+
 function formatDisplayDate(value) {
   if (value == null || value === '') return '';
   const s = String(value).trim();
@@ -814,6 +858,12 @@ function render() {
         </button>`
       : '';
     return `<div class="card" onclick="tapCard(${e.id})">
+      <button type="button" class="delete-btn" onclick="deleteEntry(event, ${e.id})" aria-label="削除">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <polyline points="3 6 5 6 21 6"></polyline>
+          <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+        </svg>
+      </button>
       <div class="card-meta">
         <div class="card-meta-left">
           ${posHtml}
