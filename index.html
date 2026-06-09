@@ -533,18 +533,6 @@
     <div class="status" id="st"></div>
   </div>
 
-  <div class="review-section hidden" id="review-section">
-    <div class="section-title">復習</div>
-    <div class="review-en" id="review-en"></div>
-    <div class="review-ja" id="review-ja"></div>
-    <input type="text" id="review-input" class="review-input" placeholder="穴埋めの語を入力" autocomplete="off" enterkeyhint="done" onkeydown="onReviewInputKeydown(event)">
-    <button type="button" class="save-btn" id="review-btn" onclick="onReviewAction()">答え合わせ</button>
-    <div class="review-result hidden" id="review-result">
-      <span class="review-mark" id="review-mark"></span>
-      <span class="review-answer-text" id="review-answer-text"></span>
-    </div>
-  </div>
-
   <div class="list-section hidden" id="list-section">
     <div class="section-header">
       <div class="section-title">カード一覧</div>
@@ -579,6 +567,19 @@
       </div>
     </div>
   </div>
+
+  <div class="review-section hidden" id="review-section">
+    <div class="section-title">復習</div>
+    <div class="review-en" id="review-en"></div>
+    <div class="review-ja" id="review-ja"></div>
+    <input type="text" id="review-input" class="review-input" placeholder="穴埋めの語を入力" autocomplete="off" enterkeyhint="done" onkeydown="onReviewInputKeydown(event)">
+    <button type="button" class="save-btn" id="review-btn" onclick="onReviewAction()">答え合わせ</button>
+    <div class="review-result hidden" id="review-result">
+      <span class="review-mark" id="review-mark"></span>
+      <span class="review-answer-text" id="review-answer-text"></span>
+    </div>
+  </div>
+
   <div id="cards"><div class="loading-overlay"><span class="spinner"></span> 読み込み中…</div></div>
 </div>
 
@@ -810,12 +811,25 @@ function onReviewInputKeydown(ev) {
   }
 }
 
+function isCurrentReviewInFilter() {
+  if (reviewState.entryId == null) return false;
+  return getReviewableEntries().some(e => e.id === reviewState.entryId);
+}
+
 function renderReviewSection() {
-  if (!getReviewableEntries().length) {
-    document.getElementById('review-section').classList.add('hidden');
+  const section = document.getElementById('review-section');
+  const pool = getReviewableEntries();
+  if (!entries.length || !pool.length) {
+    section.classList.add('hidden');
+    reviewState.entryId = null;
     return;
   }
+  if (reviewState.entryId != null && !isCurrentReviewInFilter() && !reviewState.checked) {
+    reviewState.entryId = null;
+    reviewState.exampleIdx = null;
+  }
   if (reviewState.entryId == null) loadReviewQuestion();
+  else section.classList.remove('hidden');
 }
 
 function toggleFilterPanel() {
@@ -918,7 +932,6 @@ async function loadEntries() {
     entries = [];
   }
   render();
-  renderReviewSection();
 }
 
 // ── 保存 ──
@@ -957,7 +970,6 @@ async function saveEntry() {
     inp.value = '';
     noteEl.value = '';
     render();
-    renderReviewSection();
     st.className = 'status';
     st.innerHTML = '✓ 保存しました（例文5件）';
     setTimeout(() => { st.innerHTML = ''; }, 3000);
@@ -1208,7 +1220,7 @@ function render() {
     el.innerHTML = '<div class="empty"><div class="empty-icon">📝</div>まだ登録されていません</div>';
     cnt.textContent = '';
     listSection.classList.add('hidden');
-    document.getElementById('review-section').classList.add('hidden');
+    renderReviewSection();
     updateScrollFabVisibility();
     return;
   }
@@ -1228,6 +1240,7 @@ function render() {
 
   if (!visible.length) {
     el.innerHTML = '<div class="empty"><div class="empty-icon">🔍</div>該当するカードがありません</div>';
+    renderReviewSection();
     updateScrollFabVisibility();
     return;
   }
@@ -1272,6 +1285,7 @@ function render() {
     </div>`;
   }).join('');
 
+  renderReviewSection();
   updateScrollFabVisibility();
 }
 
