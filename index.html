@@ -637,6 +637,7 @@ let reviewState = {
   entryId: null,
   exampleIdx: null,
   correctTerm: '',
+  fullTerm: '',
   answerSuffix: '',
   fullSentence: '',
   checked: false,
@@ -673,6 +674,15 @@ function findTermInSentence(en, keyword, input) {
   return null;
 }
 
+/** 文中の部分一致から、その語（活用形を含む）全体を返す */
+function getFullTermFromSentence(en, matchedText) {
+  const idx = en.toLowerCase().indexOf(String(matchedText || '').toLowerCase());
+  if (idx < 0) return matchedText;
+  let end = idx + matchedText.length;
+  while (end < en.length && /[\w']/.test(en[end])) end++;
+  return en.slice(idx, end);
+}
+
 function splitAnswerAndPunctuation(text) {
   let s = String(text || '').trim();
   let trailing = '';
@@ -698,17 +708,18 @@ function getReviewAnswerParts(en, keyword, input) {
   const found = findTermInSentence(en, keyword, input);
   if (!found) {
     const parts = splitAnswerAndPunctuation(keyword || input || '');
-    return { core: parts.core, suffix: parts.trailing };
+    return { core: parts.core, fullTerm: parts.core, suffix: parts.trailing };
   }
   const idx = en.toLowerCase().indexOf(found.matched.toLowerCase());
   const parts = splitAnswerAndPunctuation(found.matched);
+  const fullTerm = getFullTermFromSentence(en, found.matched);
   let suffix = parts.trailing;
   if (!suffix && idx >= 0) {
     const after = en.slice(idx + found.matched.length);
     const pm = after.match(/^([?!.,;:]+)/);
     if (pm) suffix = pm[1];
   }
-  return { core: parts.core, suffix };
+  return { core: parts.core, fullTerm, suffix };
 }
 
 function buildBlankHtml(matchedText) {
@@ -810,7 +821,7 @@ function loadReviewQuestion() {
   const section = document.getElementById('review-section');
   if (!picked) {
     section.classList.add('hidden');
-    reviewState = { entryId: null, exampleIdx: null, correctTerm: '', answerSuffix: '', fullSentence: '', checked: false, isCorrect: false };
+    reviewState = { entryId: null, exampleIdx: null, correctTerm: '', fullTerm: '', answerSuffix: '', fullSentence: '', checked: false, isCorrect: false };
     return;
   }
 
@@ -822,6 +833,7 @@ function loadReviewQuestion() {
     entryId: entry.id,
     exampleIdx,
     correctTerm: answerParts.core,
+    fullTerm: answerParts.fullTerm,
     answerSuffix: answerParts.suffix || '',
     fullSentence: ex.en,
     checked: false,
@@ -847,11 +859,21 @@ function loadReviewQuestion() {
   btn.disabled = false;
 }
 
-function isReviewAnswerCorrect(userAnswer, keyword, input, correctTerm) {
+function isReviewAnswerCorrect(userAnswer, keyword, input, correctTerm, fullTerm) {
   const a = normalizeReviewAnswer(userAnswer);
   if (!a) return false;
-  const terms = [correctTerm, keyword, input].filter(Boolean);
-  return terms.some(term => normalizeReviewAnswer(term) === a);
+  const terms = [correctTerm, fullTerm, keyword, input].filter(Boolean);
+  if (terms.some(term => normalizeReviewAnswer(term) === a)) return true;
+  const morphSuffix = fullTerm && correctTerm &&
+    fullTerm.toLowerCase().startsWith(correctTerm.toLowerCase()) &&
+    fullTerm.length > correctTerm.length
+    ? fullTerm.slice(correctTerm.length)
+    : '';
+  if (morphSuffix && a.endsWith(normalizeReviewAnswer(morphSuffix))) {
+    const root = a.slice(0, a.length - normalizeReviewAnswer(morphSuffix).length);
+    return normalizeReviewAnswer(correctTerm) === root;
+  }
+  return false;
 }
 
 function onReviewAction() {
@@ -874,7 +896,9 @@ function onReviewAction() {
     return;
   }
 
-  const correct = isReviewAnswerCorrect(userAnswer, entry.keyword, entry.input, reviewState.correctTerm);
+  const correct = isReviewAnswerCorrect(
+    userAnswer, entry.keyword, entry.input, reviewState.correctTerm, reviewState.fullTerm
+  );
   reviewState.checked = true;
   reviewState.isCorrect = correct;
 
