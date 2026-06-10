@@ -643,7 +643,12 @@ let reviewState = {
 };
 
 function normalizeReviewAnswer(s) {
-  return String(s || '').toLowerCase().replace(/\s+/g, ' ').trim();
+  return String(s || '')
+    .toLowerCase()
+    .replace(/['']/g, "'")
+    .replace(/[^\w\s']/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
 }
 
 function isReviewableEntry(e) {
@@ -791,10 +796,11 @@ function loadReviewQuestion() {
   btn.disabled = false;
 }
 
-function isReviewAnswerCorrect(userAnswer, keyword, input) {
+function isReviewAnswerCorrect(userAnswer, keyword, input, correctTerm) {
   const a = normalizeReviewAnswer(userAnswer);
   if (!a) return false;
-  return [keyword, input].filter(Boolean).some(term => normalizeReviewAnswer(term) === a);
+  const terms = [correctTerm, keyword, input].filter(Boolean);
+  return terms.some(term => normalizeReviewAnswer(term) === a);
 }
 
 function onReviewAction() {
@@ -817,7 +823,7 @@ function onReviewAction() {
     return;
   }
 
-  const correct = isReviewAnswerCorrect(userAnswer, entry.keyword, entry.input);
+  const correct = isReviewAnswerCorrect(userAnswer, entry.keyword, entry.input, reviewState.correctTerm);
   reviewState.checked = true;
   reviewState.isCorrect = correct;
 
