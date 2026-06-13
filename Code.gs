@@ -5,13 +5,18 @@ const EXAMPLES_PER_ENTRY = 5;
 const OPENAI_TTS_MODEL = 'gpt-4o-mini-tts';
 const OPENAI_TTS_MALE_VOICES = ['onyx', 'echo', 'fable'];
 const OPENAI_TTS_FEMALE_VOICES = ['nova', 'shimmer', 'coral'];
+const OPENAI_TTS_PACE =
+  'Speak at about 90% of normal conversational pace—not rushed, not slow. ';
 const OPENAI_TTS_INSTRUCTIONS =
-  'Native English speaker for shadowing practice. Moderate pace—not rushed, not slow. ' +
+  'Native English speaker for shadowing practice. ' + OPENAI_TTS_PACE +
   'Word stress: make stressed syllables noticeably higher, longer, and louder. ' +
   'Sentence rhythm: stress content words (nouns, verbs, adjectives, adverbs); reduce function words (the, to, of, and, a, can) with shorter, softer delivery. ' +
   'Connected speech: link words naturally where appropriate; do not pause between every word. ' +
   'Intonation: use a clear falling tone at the end of statements and WH-questions; use a rising tone only for yes/no questions. ' +
   'Sound like a clear, natural example for a learner to mimic—not flat, not theatrical.';
+const OPENAI_TTS_FEMALE_EXTRA =
+  ' Avoid monotone delivery. Exaggerate word stress and pitch movement slightly more than usual, ' +
+  'so content words stand out clearly for shadowing practice.';
 
 function doGet(e) {
   const action = e.parameter.action;
@@ -458,15 +463,24 @@ function pickTtsVoiceForExample(entryId, idx) {
   return pool[Math.abs(hash >> 8) % pool.length];
 }
 
+function buildTtsInstructions(voice) {
+  let instructions = OPENAI_TTS_INSTRUCTIONS;
+  if (OPENAI_TTS_FEMALE_VOICES.indexOf(voice) >= 0) {
+    instructions += OPENAI_TTS_FEMALE_EXTRA;
+  }
+  return instructions;
+}
+
 function callOpenAiTts(text, entryId, idx) {
   const apiKey = PropertiesService.getScriptProperties().getProperty('OPENAI_API_KEY');
   if (!apiKey) throw new Error('OPENAI_API_KEY がスクリプトプロパティに未設定です。');
 
+  const voice = pickTtsVoiceForExample(entryId, idx);
   const payload = {
     model: OPENAI_TTS_MODEL,
-    voice: pickTtsVoiceForExample(entryId, idx),
+    voice: voice,
     input: text,
-    instructions: OPENAI_TTS_INSTRUCTIONS,
+    instructions: buildTtsInstructions(voice),
     response_format: 'mp3'
   };
 
