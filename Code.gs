@@ -32,6 +32,7 @@ function doPost(e) {
   if (data.action === 'generateAndSave') return handleGenerateAndSave(data.input, data.note, data.apiKey);
   if (data.action === 'confirmCard') return handleConfirmCard(data.id, data.confirmedAt);
   if (data.action === 'deleteEntry') return handleDeleteEntry(data.id);
+  if (data.action === 'generateEntryAudio') return handleGenerateEntryAudio(data.id);
   if (data.action === 'generateAudioBatch') return handleGenerateAudioBatch();
   if (data.action === 'generateMetadataBatch') return handleGenerateMetadataBatch(data.apiKey);
   return jsonResponse({ error: 'unknown action' });
@@ -89,12 +90,6 @@ function handleGenerateAndSave(input, note, apiKey) {
       confirmedAt: '',
       audioUrls: {}
     };
-
-    try {
-      entry.audioUrls = generateAudioForAllExamples(entry);
-    } catch (audioErr) {
-      console.error('Audio generation failed: ' + audioErr.message);
-    }
 
     appendEntry(entry);
     return jsonResponse({ ok: true, entry: entry });
@@ -624,6 +619,33 @@ function handleGetAudio(id, idx) {
       return encodeAudioFileResponse(file, url);
     } catch (err) {
       return jsonResponse({ error: err.message });
+    }
+  }
+
+  return jsonResponse({ error: 'entry not found' });
+}
+
+function handleGenerateEntryAudio(id) {
+  if (id == null || id === '') return jsonResponse({ error: 'id required' });
+
+  const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_NAME);
+  const rows = sheet.getDataRange().getValues();
+
+  for (let i = 1; i < rows.length; i++) {
+    if (String(rows[i][0]) !== String(id)) continue;
+
+    const existingUrls = parseAudioUrls(rows[i][9]);
+    const examples = JSON.parse(rows[i][3] || '[]');
+    if (isAllAudioCached(examples, existingUrls)) {
+      return jsonResponse({ ok: true, audioUrls: existingUrls, alreadyComplete: true });
+    }
+
+    try {
+      const merged = generateAudioForAllExamples({ id: id, examples: examples }, existingUrls);
+      sheet.getRange(i + 1, 10).setValue(JSON.stringify(merged));
+      return jsonResponse({ ok: true, audioUrls: merged });
+    } catch (err) {
+      return jsonResponse({ error: err.message || String(err) });
     }
   }
 

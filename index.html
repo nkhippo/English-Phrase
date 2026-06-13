@@ -221,7 +221,8 @@
     letter-spacing: 0.02em;
   }
   .card-body { position: relative; }
-  .card-body .speak-btn {
+  .card-body .speak-btn,
+  .card-body .create-audio-btn {
     position: absolute;
     bottom: 0;
     right: -42px;
@@ -253,6 +254,28 @@
   .speak-btn:hover { background: var(--accent-light); border-color: var(--accent); }
   .speak-btn:active { transform: scale(0.96); }
   .speak-btn svg { width: 18px; height: 18px; flex-shrink: 0; pointer-events: none; }
+  .create-audio-btn {
+    min-width: 36px;
+    height: 36px;
+    padding: 0 6px;
+    border: 1px dashed var(--border-strong);
+    border-radius: 8px;
+    background: var(--bg);
+    color: var(--muted);
+    font-size: 10px;
+    font-weight: 500;
+    font-family: 'DM Sans', sans-serif;
+    line-height: 1;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.12s, border-color 0.12s, color 0.12s;
+  }
+  .create-audio-btn:hover:not(:disabled) { background: var(--accent-light); border-color: var(--accent); color: var(--accent-text); }
+  .create-audio-btn:active:not(:disabled) { transform: scale(0.96); }
+  .create-audio-btn:disabled { cursor: default; opacity: 0.85; }
+  .create-audio-btn .spinner { width: 14px; height: 14px; }
   .delete-btn {
     width: 28px;
     height: 28px;
@@ -1080,7 +1103,7 @@ async function saveEntry() {
   }
   btn.disabled = true;
   st.className = 'status';
-  st.innerHTML = '<span class="spinner"></span><span>例文・音声を生成中…サーバー側で処理しています。完了表示までこのタブを閉じないでください（30秒〜1分程度）</span>';
+  st.innerHTML = '<span class="spinner"></span><span>例文を生成中…（10〜30秒程度）</span>';
 
   try {
     const res = await fetch(GAS_URL, {
@@ -1099,10 +1122,7 @@ async function saveEntry() {
     noteEl.value = '';
     render();
     st.className = 'status';
-    const audioCount = Object.keys(entry.audioUrls || {}).length;
-    st.innerHTML = audioCount > 0
-      ? '✓ 保存しました（例文5件・音声' + audioCount + '件）'
-      : '✓ 保存しました（例文5件・音声は未生成）';
+    st.innerHTML = '✓ 保存しました（例文5件）';
     setTimeout(() => { st.innerHTML = ''; }, 3000);
   } catch (err) {
     console.error(err);
@@ -1382,15 +1402,7 @@ function render() {
     const posHtml = e.pos
       ? `<span class="pos">${escHtml(POS_LABELS[e.pos] || e.pos)}</span>`
       : '';
-    const speakBtn = ex.en && hasEntryAudio(e, e.idx)
-      ? `<button type="button" class="speak-btn" onclick="speakSentence(event, ${e.id})" aria-label="英文を読み上げ">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-            <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon>
-            <path d="M15.54 8.46a5 5 0 0 1 0 7.07"></path>
-            <path d="M19.07 4.93a10 10 0 0 1 0 14.14"></path>
-          </svg>
-        </button>`
-      : '';
+    const audioActionHtml = cardAudioActionHtml(e, ex);
     return `<div class="card" onclick="tapCard(${e.id})">
       <div class="card-meta">
         <div class="card-meta-left">
@@ -1402,7 +1414,7 @@ function render() {
       </div>
       <div class="card-body">
         <div class="en-text">${highlightKeyword(ex.en, e.keyword, e.input)}</div>
-        ${speakBtn}
+        ${audioActionHtml}
       </div>
       ${e.show ? `<div class="ja-text">${escHtml(ex.ja)}</div>` : ''}
       <div class="card-actions">
@@ -1431,6 +1443,58 @@ function escHtml(s) {
 // ── 音声再生（OpenAI TTS / Drive キャッシュのみ） ──
 
 let currentAudio = null;
+const audioGeneratingIds = new Set();
+
+function isEntryAudioGenerating(id) {
+  return audioGeneratingIds.has(String(id));
+}
+
+function cardAudioActionHtml(e, ex) {
+  if (!ex.en) return '';
+  const id = e.id;
+  if (isEntryAudioGenerating(id)) {
+    return `<button type="button" class="create-audio-btn loading" disabled aria-label="音声を作成中">
+      <span class="spinner"></span>
+    </button>`;
+  }
+  if (hasEntryAudio(e, e.idx)) {
+    return `<button type="button" class="speak-btn" onclick="speakSentence(event, ${id})" aria-label="英文を読み上げ">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon>
+        <path d="M15.54 8.46a5 5 0 0 1 0 7.07"></path>
+        <path d="M19.07 4.93a10 10 0 0 1 0 14.14"></path>
+      </svg>
+    </button>`;
+  }
+  return `<button type="button" class="create-audio-btn" onclick="createEntryAudio(event, ${id})" aria-label="音声を作成">音声</button>`;
+}
+
+async function createEntryAudio(ev, id) {
+  ev.stopPropagation();
+  const sid = String(id);
+  if (audioGeneratingIds.has(sid)) return;
+  const entry = entries.find(x => String(x.id) === sid);
+  if (!entry) return;
+
+  audioGeneratingIds.add(sid);
+  render();
+  try {
+    const res = await fetch(GAS_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify({ action: 'generateEntryAudio', id: entry.id })
+    });
+    const data = await res.json();
+    if (data.error) throw new Error(data.error);
+    if (data.audioUrls) entry.audioUrls = data.audioUrls;
+  } catch (err) {
+    console.error('createEntryAudio error:', err);
+    alert('音声の作成に失敗しました：' + (err.message || 'エラーが発生しました'));
+  } finally {
+    audioGeneratingIds.delete(sid);
+    render();
+  }
+}
 
 function hasEntryAudio(entry, idx) {
   return !!(entry?.audioUrls?.[String(idx)]);
