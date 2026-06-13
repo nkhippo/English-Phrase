@@ -457,7 +457,7 @@
     color: var(--text);
     overflow-wrap: break-word;
   }
-  .review-speak-btn { flex-shrink: 0; margin-top: 1px; }
+  .review-audio-action { flex-shrink: 0; margin-top: 1px; }
   .review-blank {
     display: inline-block;
     border-bottom: 2px solid var(--accent);
@@ -618,13 +618,7 @@
     <div class="section-title">復習</div>
     <div class="review-en-row">
       <div class="review-en" id="review-en"></div>
-      <button type="button" class="speak-btn review-speak-btn hidden" id="review-speak-btn" onclick="speakReviewSentence(event)" aria-label="英文を読み上げ">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-          <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon>
-          <path d="M15.54 8.46a5 5 0 0 1 0 7.07"></path>
-          <path d="M19.07 4.93a10 10 0 0 1 0 14.14"></path>
-        </svg>
-      </button>
+      <div id="review-audio-action" class="review-audio-action"></div>
     </div>
     <div class="review-ja" id="review-ja"></div>
     <input type="text" id="review-input" class="review-input" placeholder="穴埋めの語を入力" autocomplete="off" enterkeyhint="done" onkeydown="onReviewInputKeydown(event)">
@@ -891,10 +885,7 @@ function loadReviewQuestion() {
   btn.textContent = '答え合わせ';
   btn.disabled = false;
 
-  const reviewSpeakBtn = document.getElementById('review-speak-btn');
-  if (reviewSpeakBtn) {
-    reviewSpeakBtn.classList.toggle('hidden', !hasEntryAudio(entry, exampleIdx));
-  }
+  updateReviewAudioAction();
 }
 
 function isReviewAnswerCorrect(userAnswer, keyword, input, correctTerm, fullTerm) {
@@ -980,7 +971,10 @@ function renderReviewSection() {
     reviewState.exampleIdx = null;
   }
   if (reviewState.entryId == null) loadReviewQuestion();
-  else section.classList.remove('hidden');
+  else {
+    section.classList.remove('hidden');
+    updateReviewAudioAction();
+  }
 }
 
 function toggleFilterPanel() {
@@ -1449,16 +1443,34 @@ function isEntryAudioGenerating(id) {
   return audioGeneratingIds.has(String(id));
 }
 
-function cardAudioActionHtml(e, ex) {
+function updateReviewAudioAction() {
+  const el = document.getElementById('review-audio-action');
+  if (!el) return;
+  if (reviewState.entryId == null) {
+    el.innerHTML = '';
+    return;
+  }
+  const entry = entries.find(e => e.id === reviewState.entryId);
+  if (!entry) {
+    el.innerHTML = '';
+    return;
+  }
+  const exampleIdx = reviewState.exampleIdx ?? 0;
+  el.innerHTML = entryAudioActionHtml(entry, exampleIdx, { speakOnclick: 'speakReviewSentence(event)' });
+}
+
+function entryAudioActionHtml(entry, exampleIdx, options = {}) {
+  const ex = (entry.examples && entry.examples[exampleIdx]) || { en: '' };
   if (!ex.en) return '';
-  const id = e.id;
+  const id = entry.id;
+  const speakOnclick = options.speakOnclick || `speakSentence(event, ${id})`;
   if (isEntryAudioGenerating(id)) {
     return `<button type="button" class="create-audio-btn loading" disabled aria-label="音声を作成中">
       <span class="spinner"></span>
     </button>`;
   }
-  if (hasEntryAudio(e, e.idx)) {
-    return `<button type="button" class="speak-btn" onclick="speakSentence(event, ${id})" aria-label="英文を読み上げ">
+  if (hasEntryAudio(entry, exampleIdx)) {
+    return `<button type="button" class="speak-btn" onclick="${speakOnclick}" aria-label="英文を読み上げ">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
         <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon>
         <path d="M15.54 8.46a5 5 0 0 1 0 7.07"></path>
@@ -1467,6 +1479,10 @@ function cardAudioActionHtml(e, ex) {
     </button>`;
   }
   return `<button type="button" class="create-audio-btn" onclick="createEntryAudio(event, ${id})" aria-label="音声を作成">音声</button>`;
+}
+
+function cardAudioActionHtml(e, ex) {
+  return entryAudioActionHtml(e, e.idx);
 }
 
 async function createEntryAudio(ev, id) {
