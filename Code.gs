@@ -21,6 +21,7 @@ function doPost(e) {
   if (data.action === 'confirmCard') return handleConfirmCard(data.id, data.confirmedAt);
   if (data.action === 'deleteEntry') return handleDeleteEntry(data.id);
   if (data.action === 'generateAudioBatch') return handleGenerateAudioBatch();
+  if (data.action === 'generateMetadataBatch') return handleGenerateMetadataBatch(data.apiKey);
   return jsonResponse({ error: 'unknown action' });
 }
 
@@ -286,6 +287,118 @@ function ensureIpa(keyword, apiKey, parsed, raw) {
   if (ipa) return ipa;
 
   throw new Error('IPA発音記号の生成に失敗しました。もう一度お試しください。');
+}
+
+function getAnthropicApiKey(optionalKey) {
+  const key = optionalKey || PropertiesService.getScriptProperties().getProperty('ANTHROPIC_API_KEY');
+  if (!key) {
+    throw new Error('ANTHROPIC_API_KEY がスクリプトプロパティに未設定です。Apps Script のプロジェクト設定から登録してください。');
+  }
+  return key;
+}
+
+function needsMetadataBackfill(ipaCell, posCell) {
+  return !String(ipaCell || '').trim() || !String(posCell || '').trim();
+}
+
+function generateMetadataForKeyword(keyword, apiKey) {
+  const prompt =
+    `英語の単語またはフレーズ「${keyword}」について、IPA発音記号と品詞を返してください。\n` +
+    '品詞は noun, verb, adjective, adverb, preposition, conjunction, pronoun, interjection, idiom, phrase のいずれか1つ。\n' +
+    'JSONのみ（前置き・コードブロック禁止）: {"ipa":"/IPA/","partOfSpeech":"noun"}';
+  const raw = callClaude(apiKey, prompt, 300);
+  const parsed = parseGeneratedJson(raw);
+  const ipa = normalizeIpa(parsed.ipa || extractIpaFromParsed(parsed, raw));
+  const pos = normalizePos(parsed.partOfSpeech || parsed.pos || parsed.part_of_speech);
+  if (!ipa) throw new Error('IPA generation failed for ' + keyword);
+  if (!pos) throw new Error('partOfSpeech generation failed for ' + keyword);
+  return { ipa: ipa, pos: pos };
+}
+
+function applyMetadataToRow(sheet, rowIndex, row, meta) {
+  const existingIpa = String(row[6] || '').trim();
+  const existingPos = String(row[7] || '').trim();
+  if (!existingIpa && meta.ipa) sheet.getRange(rowIndex, 7).setValue(meta.ipa);
+  if (!existingPos && meta.pos) sheet.getRange(rowIndex, 8).setValue(meta.pos);
+}
+
+function handleGenerateMetadataBatch(apiKey) {
+  const resolvedKey = getAnthropicApiKey(apiKey);
+  const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_NAME);
+  const rows = sheet.getDataRange().getValues();
+  let processed = 0;
+  let errors = 0;
+  let skipped = 0;
+
+  for (let i = 1; i < rows.length; i++) {
+    if (!needsMetadataBackfill(rows[i][6], rows[i][7])) {
+      skipped++;
+      continue;
+    }
+
+    const keyword = toLowerEntryText(rows[i][2] || rows[i][1]);
+    if (!keyword) {
+      errors++;
+      console.error('Metadata batch row ' + i + ': keyword empty');
+      continue;
+    }
+
+    try {
+      const meta = generateMetadataForKeyword(keyword, resolvedKey);
+      applyMetadataToRow(sheet, i + 1, rows[i], meta);
+      processed++;
+      Utilities.sleep(300);
+    } catch (err) {
+      errors++;
+      console.error('Metadata batch id=' + rows[i][0] + ': ' + err.message);
+    }
+  }
+
+  return jsonResponse({ ok: true, processed: processed, errors: errors, skipped: skipped });
+}
+
+/**
+ * Apps Script エディタから手動実行。ipa または partOfSpeech が空の行を Claude で埋める。
+ * 事前にスクリプトプロパティ ANTHROPIC_API_KEY を設定すること。
+ */
+function runMetadataBatchGeneration() {
+  const result = handleGenerateMetadataBatch();
+  console.log(result.getContent());
+}
+
+/**
+ * 指定行から n 件だけ metadata を埋める（タイムアウト回避用）
+ * @param {number} startRow - 1-indexed（ヘッダーを除くデータ行番号。1 = スプレッドシート2行目）
+ * @param {number} n - 処理件数上限
+ */
+function generateMetadataBatchFrom(startRow, n) {
+  const apiKey = getAnthropicApiKey();
+  const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_NAME);
+  const rows = sheet.getDataRange().getValues();
+  let processed = 0;
+  let errors = 0;
+
+  for (let i = startRow; i < Math.min(startRow + n, rows.length); i++) {
+    if (!needsMetadataBackfill(rows[i][6], rows[i][7])) continue;
+
+    const keyword = toLowerEntryText(rows[i][2] || rows[i][1]);
+    if (!keyword) {
+      errors++;
+      continue;
+    }
+
+    try {
+      const meta = generateMetadataForKeyword(keyword, apiKey);
+      applyMetadataToRow(sheet, i + 1, rows[i], meta);
+      processed++;
+      Utilities.sleep(300);
+    } catch (err) {
+      errors++;
+      console.error('Metadata row ' + i + ' failed: ' + err.message);
+    }
+  }
+
+  console.log('Done. processed=' + processed + ', errors=' + errors);
 }
 
 function handleHealth() {
