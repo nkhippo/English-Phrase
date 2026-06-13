@@ -303,6 +303,7 @@ function handleHealth() {
  */
 function authorizeExternalRequest() {
   UrlFetchApp.fetch('https://httpbin.org/get', { muteHttpExceptions: true });
+  getOrCreateAudioFolder();
   PropertiesService.getScriptProperties().setProperty('EXTERNAL_AUTH_OK', '1');
 }
 
@@ -316,10 +317,11 @@ function onOpen() {
     authorizeExternalRequest();
   } catch (err) {
     SpreadsheetApp.getUi().alert(
-      'Phrase: Claude API を使う権限が必要です。\n\n' +
+      'Phrase: 外部 API・Google Drive を使う権限が必要です。\n\n' +
       '1. 拡張機能 → Apps Script\n' +
-      '2. authorizeExternalRequest を実行して「許可」\n' +
-      '3. デプロイを更新（実行者: 自分 / アクセス: 全員）'
+      '2. authorizeExternalRequest を実行して「許可」（Drive 含む）\n' +
+      '3. appsscript.json に drive スコープがあることを確認\n' +
+      '4. デプロイを更新（実行者: 自分 / アクセス: 全員）'
     );
   }
 }
