@@ -1435,6 +1435,10 @@ function playAudioFromUrl(url) {
   }
   const audio = new Audio(url);
   currentAudio = audio;
+  audio.addEventListener('error', () => {
+    console.error('Audio element error:', audio.error);
+    alert('音声の再生に失敗しました。');
+  });
   audio.play().catch(err => {
     console.error('Audio play failed:', err);
     alert('音声の再生に失敗しました。');

@@ -372,11 +372,33 @@ function saveAudioToDrive(audioBytes, entryId, idx) {
   return 'https://drive.google.com/uc?export=download&id=' + file.getId();
 }
 
+function extractDriveFileId(url) {
+  const m = String(url || '').match(/[?&]id=([^&]+)/);
+  return m ? m[1] : '';
+}
+
+function getAudioFileIdFromSheet(entryId, idx) {
+  const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_NAME);
+  const rows = sheet.getDataRange().getValues();
+  for (let i = 1; i < rows.length; i++) {
+    if (String(rows[i][0]) !== String(entryId)) continue;
+    const audioUrls = parseAudioUrls(rows[i][9]);
+    return extractDriveFileId(audioUrls[String(idx)]);
+  }
+  return '';
+}
+
 function getAudioFileByEntry(entryId, idx) {
   const folder = getOrCreateAudioFolder();
   const fileName = entryId + '_' + idx + '.mp3';
   const files = folder.getFilesByName(fileName);
-  return files.hasNext() ? files.next() : null;
+  if (files.hasNext()) return files.next();
+
+  const fileId = getAudioFileIdFromSheet(entryId, idx);
+  if (fileId) {
+    try { return DriveApp.getFileById(fileId); } catch (e) {}
+  }
+  return null;
 }
 
 /**
@@ -390,7 +412,7 @@ function handleStreamAudio(id, idx) {
   if (!file) {
     return ContentService.createTextOutput('audio not found').setMimeType(ContentService.MimeType.TEXT);
   }
-  return file.getBlob().setContentType('audio/mpeg');
+  return ContentService.createBinaryOutput(file.getBlob().getBytes()).setMimeType('audio/mpeg');
 }
 
 function getOrCreateAudioFolder() {
