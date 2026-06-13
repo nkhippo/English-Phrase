@@ -1434,6 +1434,18 @@ function escHtml(s) {
 
 let currentAudio = null;
 const audioGeneratingIds = new Set();
+let audioCache = { key: null, url: null };
+
+function audioCacheKey(entryId, idx) {
+  return String(entryId) + ':' + String(idx);
+}
+
+function clearAudioCacheForEntry(entryId) {
+  const prefix = String(entryId) + ':';
+  if (audioCache.key && audioCache.key.startsWith(prefix)) {
+    audioCache = { key: null, url: null };
+  }
+}
 
 function isEntryAudioGenerating(id) {
   return audioGeneratingIds.has(String(id));
@@ -1499,6 +1511,7 @@ async function createEntryAudio(ev, id) {
     const data = await res.json();
     if (data.error) throw new Error(data.error);
     if (data.audioUrls) entry.audioUrls = data.audioUrls;
+    clearAudioCacheForEntry(sid);
   } catch (err) {
     console.error('createEntryAudio error:', err);
     alert('音声の作成に失敗しました：' + (err.message || 'エラーが発生しました'));
@@ -1533,6 +1546,12 @@ async function speakEntry(entryId, idx, btnEl) {
   const entry = entries.find(e => String(e.id) === String(entryId));
   if (!entry || !hasEntryAudio(entry, idx)) return;
 
+  const key = audioCacheKey(entryId, idx);
+  if (audioCache.key === key && audioCache.url) {
+    playAudioFromUrl(audioCache.url);
+    return;
+  }
+
   if (btnEl) btnEl.disabled = true;
   try {
     const res = await fetch(GAS_URL + '?action=getAudio&id=' + entryId + '&idx=' + idx);
@@ -1540,7 +1559,9 @@ async function speakEntry(entryId, idx, btnEl) {
     if (data.error) throw new Error(data.error);
     if (!data.audioBase64) throw new Error('audioBase64 が返されませんでした');
 
-    playAudioFromUrl('data:audio/mpeg;base64,' + data.audioBase64);
+    const url = 'data:audio/mpeg;base64,' + data.audioBase64;
+    audioCache = { key, url };
+    playAudioFromUrl(url);
   } catch (err) {
     console.error('speakEntry error:', err);
     alert('音声の再生に失敗しました：' + err.message);
