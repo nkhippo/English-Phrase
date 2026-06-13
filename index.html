@@ -221,16 +221,16 @@
     letter-spacing: 0.02em;
   }
   .card-body { position: relative; }
+  .card-body .speak-btn {
+    position: absolute;
+    bottom: 0;
+    right: -42px;
+    z-index: 2;
+  }
   .card-actions {
     position: absolute;
     top: 10px;
     right: 10px;
-    bottom: 10px;
-    width: 36px;
-    display: flex;
-    flex-direction: column;
-    justify-content: space-between;
-    align-items: center;
     z-index: 2;
     pointer-events: none;
   }
@@ -1402,6 +1402,7 @@ function render() {
       </div>
       <div class="card-body">
         <div class="en-text">${highlightKeyword(ex.en, e.keyword, e.input)}</div>
+        ${speakBtn}
       </div>
       ${e.show ? `<div class="ja-text">${escHtml(ex.ja)}</div>` : ''}
       <div class="card-actions">
@@ -1411,7 +1412,6 @@ function render() {
             <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
           </svg>
         </button>
-        ${speakBtn}
       </div>
     </div>`;
   }).join('');
