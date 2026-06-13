@@ -1,10 +1,16 @@
 const SHEET_NAME = 'english-phrase';
 const CLAUDE_MODEL = 'claude-sonnet-4-6';
+const DRIVE_FOLDER_NAME = 'EnglishPhrase_Audio';
+const EXAMPLES_PER_ENTRY = 5;
+const OPENAI_TTS_MODEL = 'gpt-4o-mini-tts';
+const OPENAI_TTS_VOICE = 'nova';
+const OPENAI_TTS_INSTRUCTIONS = 'Speak clearly and at a moderate pace, suitable for English language learning. Pronounce each word distinctly.';
 
 function doGet(e) {
   const action = e.parameter.action;
   if (action === 'getAll') return handleGetAll();
   if (action === 'health') return handleHealth();
+  if (action === 'getAudio') return handleGetAudio(e.parameter.id, Number(e.parameter.idx || 0));
   return jsonResponse({ error: 'unknown action' });
 }
 
@@ -14,6 +20,7 @@ function doPost(e) {
   if (data.action === 'generateAndSave') return handleGenerateAndSave(data.input, data.note, data.apiKey);
   if (data.action === 'confirmCard') return handleConfirmCard(data.id, data.confirmedAt);
   if (data.action === 'deleteEntry') return handleDeleteEntry(data.id);
+  if (data.action === 'generateAudioBatch') return handleGenerateAudioBatch();
   return jsonResponse({ error: 'unknown action' });
 }
 
@@ -32,6 +39,7 @@ function handleGetAll() {
     ipa:          r[6] || '',
     pos:          normalizePos(r[7]),
     confirmedAt:  parseConfirmedAt(r[8]),
+    audioUrls:    parseAudioUrls(r[9]),
     idx:          0,
     show:         false
   })).reverse();
@@ -55,8 +63,9 @@ function handleGenerateAndSave(input, note, apiKey) {
     const parsed = generated.parsed;
     const keyword = toLowerEntryText(parsed.keyword);
     const ipa = ensureIpa(keyword, apiKey, parsed, generated.raw);
+    const entryId = Date.now();
     const entry = {
-      id: Date.now(),
+      id: entryId,
       input: normalizedInput,
       note: note || '',
       keyword: keyword,
@@ -64,8 +73,16 @@ function handleGenerateAndSave(input, note, apiKey) {
       pos: normalizePos(parsed.partOfSpeech || parsed.pos || parsed.part_of_speech),
       examples: parsed.examples,
       date: Utilities.formatDate(new Date(), Session.getScriptTimeZone() || 'Asia/Tokyo', 'M/d'),
-      confirmedAt: ''
+      confirmedAt: '',
+      audioUrls: {}
     };
+
+    try {
+      entry.audioUrls = generateAudioForAllExamples(entry);
+    } catch (audioErr) {
+      console.error('Audio generation failed: ' + audioErr.message);
+    }
+
     appendEntry(entry);
     return jsonResponse({ ok: true, entry: entry });
   } catch (err) {
@@ -98,7 +115,8 @@ function appendEntry(entry) {
     entry.note || '',
     entry.ipa || '',
     entry.pos || '',
-    entry.confirmedAt || ''
+    entry.confirmedAt || '',
+    JSON.stringify(entry.audioUrls || {})
   ]);
 }
 
@@ -138,6 +156,11 @@ function deleteEntryById(id) {
     }
   }
   return false;
+}
+
+function parseAudioUrls(cell) {
+  if (!cell || cell === '') return {};
+  try { return JSON.parse(cell); } catch (e) { return {}; }
 }
 
 function parseConfirmedAt(cell) {
@@ -299,6 +322,179 @@ function onOpen() {
       '3. デプロイを更新（実行者: 自分 / アクセス: 全員）'
     );
   }
+}
+
+function callOpenAiTts(text) {
+  const apiKey = PropertiesService.getScriptProperties().getProperty('OPENAI_API_KEY');
+  if (!apiKey) throw new Error('OPENAI_API_KEY がスクリプトプロパティに未設定です。');
+
+  const payload = {
+    model: OPENAI_TTS_MODEL,
+    voice: OPENAI_TTS_VOICE,
+    input: text,
+    instructions: OPENAI_TTS_INSTRUCTIONS,
+    response_format: 'mp3'
+  };
+
+  const res = UrlFetchApp.fetch('https://api.openai.com/v1/audio/speech', {
+    method: 'post',
+    headers: {
+      'Authorization': 'Bearer ' + apiKey,
+      'Content-Type': 'application/json'
+    },
+    payload: JSON.stringify(payload),
+    muteHttpExceptions: true
+  });
+
+  const status = res.getResponseCode();
+  if (status !== 200) {
+    const body = res.getContentText();
+    throw new Error('OpenAI TTS API error (' + status + '): ' + body);
+  }
+
+  return res.getContent();
+}
+
+function saveAudioToDrive(audioBytes, entryId, idx) {
+  const folder = getOrCreateAudioFolder();
+  const fileName = entryId + '_' + idx + '.mp3';
+
+  const existing = folder.getFilesByName(fileName);
+  while (existing.hasNext()) existing.next().setTrashed(true);
+
+  const blob = Utilities.newBlob(audioBytes, 'audio/mpeg', fileName);
+  const file = folder.createFile(blob);
+  file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+
+  return 'https://drive.google.com/uc?export=download&id=' + file.getId();
+}
+
+function getOrCreateAudioFolder() {
+  const folders = DriveApp.getFoldersByName(DRIVE_FOLDER_NAME);
+  if (folders.hasNext()) return folders.next();
+  const folder = DriveApp.createFolder(DRIVE_FOLDER_NAME);
+  folder.setSharing(DriveApp.Access.PRIVATE, DriveApp.Permission.NONE);
+  return folder;
+}
+
+function generateAudioForAllExamples(entry, existingUrls) {
+  const audioUrls = Object.assign({}, existingUrls || {});
+  const examples = entry.examples || [];
+  const count = Math.min(examples.length, EXAMPLES_PER_ENTRY);
+
+  for (let i = 0; i < count; i++) {
+    const key = String(i);
+    if (audioUrls[key]) continue;
+
+    const text = examples[i] && examples[i].en;
+    if (!text) continue;
+    try {
+      const audioBytes = callOpenAiTts(text);
+      const url = saveAudioToDrive(audioBytes, entry.id, i);
+      audioUrls[key] = url;
+      Utilities.sleep(300);
+    } catch (err) {
+      console.error('Audio failed for idx ' + i + ': ' + err.message);
+    }
+  }
+  return audioUrls;
+}
+
+function isAllAudioCached(examples, audioUrls) {
+  const count = Math.min((examples || []).length, EXAMPLES_PER_ENTRY);
+  if (count === 0) return true;
+  for (let i = 0; i < count; i++) {
+    if (!audioUrls[String(i)]) return false;
+  }
+  return true;
+}
+
+function handleGetAudio(id, idx) {
+  if (!id) return jsonResponse({ error: 'id required' });
+
+  const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_NAME);
+  const rows = sheet.getDataRange().getValues();
+
+  for (let i = 1; i < rows.length; i++) {
+    if (String(rows[i][0]) !== String(id)) continue;
+
+    const audioUrls = parseAudioUrls(rows[i][9]);
+    const key = String(idx);
+
+    if (audioUrls[key]) {
+      return jsonResponse({ audioUrl: audioUrls[key] });
+    }
+
+    const examples = JSON.parse(rows[i][3] || '[]');
+    const text = examples[idx] && examples[idx].en;
+    if (!text) return jsonResponse({ error: 'example not found' });
+
+    try {
+      const audioBytes = callOpenAiTts(text);
+      const url = saveAudioToDrive(audioBytes, id, idx);
+      audioUrls[key] = url;
+      sheet.getRange(i + 1, 10).setValue(JSON.stringify(audioUrls));
+      return jsonResponse({ audioUrl: url });
+    } catch (err) {
+      return jsonResponse({ error: err.message });
+    }
+  }
+
+  return jsonResponse({ error: 'entry not found' });
+}
+
+function handleGenerateAudioBatch() {
+  const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_NAME);
+  const rows = sheet.getDataRange().getValues();
+  let processed = 0;
+  let errors = 0;
+
+  for (let i = 1; i < rows.length; i++) {
+    const id = rows[i][0];
+    const existingUrls = parseAudioUrls(rows[i][9]);
+    const examples = JSON.parse(rows[i][3] || '[]');
+    if (isAllAudioCached(examples, existingUrls)) continue;
+
+    try {
+      const merged = generateAudioForAllExamples({ id: id, examples: examples }, existingUrls);
+      sheet.getRange(i + 1, 10).setValue(JSON.stringify(merged));
+      processed++;
+      Utilities.sleep(500);
+    } catch (err) {
+      console.error('Batch audio error for id=' + id + ': ' + err.message);
+      errors++;
+    }
+  }
+
+  return jsonResponse({ ok: true, processed: processed, errors: errors });
+}
+
+function runAudioBatchGeneration() {
+  const result = handleGenerateAudioBatch();
+  console.log(result.getContent());
+}
+
+function generateAudioBatchFrom(startRow, n) {
+  const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_NAME);
+  const rows = sheet.getDataRange().getValues();
+  let processed = 0;
+
+  for (let i = startRow; i < Math.min(startRow + n, rows.length); i++) {
+    const id = rows[i][0];
+    const existingUrls = parseAudioUrls(rows[i][9]);
+    const examples = JSON.parse(rows[i][3] || '[]');
+    if (isAllAudioCached(examples, existingUrls)) continue;
+
+    try {
+      const merged = generateAudioForAllExamples({ id: id, examples: examples }, existingUrls);
+      sheet.getRange(i + 1, 10).setValue(JSON.stringify(merged));
+      processed++;
+      Utilities.sleep(500);
+    } catch (err) {
+      console.error('Row ' + i + ' failed: ' + err.message);
+    }
+  }
+  console.log('Done. processed=' + processed);
 }
 
 function jsonResponse(data) {

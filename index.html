@@ -619,7 +619,7 @@
 <button type="button" class="scroll-fab scroll-fab-bottom hidden" id="scroll-bottom" onclick="scrollToListBottom()" aria-label="一覧の末尾へ">↓</button>
 
 <script>
-const GAS_URL = 'https://script.google.com/macros/s/AKfycbwqQvI0OFLuN2oZeYsF5hDVzmfY_Yta4GSPv6DkYp0eA6tGfmSu59sE7vHQrIYE-MIk/exec';
+const GAS_URL = 'https://script.google.com/macros/s/AKfycbxSxL3f_W0YDyBjoWNN9sFTWInBtcwNjSPpfnr_m4LrS-L6QQSLumpX4rRnXWSeK6I/exec';
 const API_KEY_STORAGE = 'phrase_anthropic_api_key';
 const SORT_STORAGE = 'phrase_card_sort_times';
 const FILTER_STORAGE = 'phrase_pos_filter';
@@ -1042,7 +1042,7 @@ async function loadEntries() {
     const res = await fetch(GAS_URL + '?action=getAll');
     const data = await res.json();
     entries = (data.entries || []).map(e => {
-      const entry = { ...e, pos: e.pos || '', confirmedAt: e.confirmedAt || '', idx: 0, show: false };
+      const entry = { ...e, pos: e.pos || '', confirmedAt: e.confirmedAt || '', idx: 0, show: false, audioUrls: e.audioUrls || {} };
       if (!entry.confirmedAt) {
         const legacy = getCardSortTime(entry.id);
         if (legacy > 0) entry.confirmedAt = legacy;
@@ -1087,7 +1087,7 @@ async function saveEntry() {
     if (data.error) throw new Error(data.error);
 
     const entry = data.entry;
-    entries.push({ ...entry, pos: entry.pos || '', confirmedAt: '', idx: 0, show: false });
+    entries.push({ ...entry, pos: entry.pos || '', confirmedAt: '', idx: 0, show: false, audioUrls: entry.audioUrls || {} });
     setCardSortTime(entry.id, -Date.now());
     applyListOrder();
     inp.value = '';
@@ -1420,85 +1420,65 @@ function escHtml(s) {
     .replace(/"/g, '&quot;');
 }
 
-const SPEAK_RATE = 0.78;
-const SPEAK_PITCH = 1.0;
+// ── 音声再生 ──
 
-function getEnglishVoices() {
-  if (!('speechSynthesis' in window)) return [];
-  return window.speechSynthesis.getVoices().filter(v => /^en(-|_)/i.test(v.lang));
+let currentAudio = null;
+
+function playAudioFromUrl(url) {
+  if (currentAudio) {
+    currentAudio.pause();
+    currentAudio = null;
+  }
+  const audio = new Audio(url);
+  currentAudio = audio;
+  audio.play().catch(err => {
+    console.error('Audio play failed:', err);
+    alert('音声の再生に失敗しました。');
+  });
 }
 
-function pickEnglishVoice(voices) {
-  if (!voices.length) return null;
-  const prefer = patterns => {
-    for (const pattern of patterns) {
-      const voice = voices.find(v => pattern.test(v.name));
-      if (voice) return voice;
-    }
-    return null;
-  };
-  return prefer([
-    /ava/i,
-    /premium|プレミアム/i,
-    /enhanced|拡張/i,
-    /samantha/i,
-    /alex/i,
-    /karen/i,
-    /daniel/i
-  ]) || voices.find(v => /^en-US/i.test(v.lang)) || voices[0];
-}
+async function speakEntry(entryId, idx, btnEl) {
+  const entry = entries.find(e => String(e.id) === String(entryId));
+  if (!entry) return;
 
-function buildUtterance(text) {
-  const u = new SpeechSynthesisUtterance(text);
-  u.lang = 'en-US';
-  u.rate = SPEAK_RATE;
-  u.pitch = SPEAK_PITCH;
-  const voice = pickEnglishVoice(getEnglishVoices());
-  if (voice) u.voice = voice;
-  return u;
-}
+  const key = String(idx);
+  const cachedUrl = entry.audioUrls?.[key];
 
-function speakEnglishText(text) {
-  if (!text) return;
-  if (!('speechSynthesis' in window)) {
-    alert('このブラウザは音声読み上げに対応していません。');
+  if (cachedUrl) {
+    playAudioFromUrl(cachedUrl);
     return;
   }
 
-  const synth = window.speechSynthesis;
-  synth.cancel();
+  if (btnEl) btnEl.disabled = true;
+  try {
+    const res = await fetch(GAS_URL + '?action=getAudio&id=' + entryId + '&idx=' + idx);
+    const data = await res.json();
+    if (data.error) throw new Error(data.error);
+    if (!data.audioUrl) throw new Error('audioUrl が返されませんでした');
 
-  const speak = () => synth.speak(buildUtterance(text));
+    if (!entry.audioUrls) entry.audioUrls = {};
+    entry.audioUrls[key] = data.audioUrl;
 
-  if (getEnglishVoices().length) {
-    speak();
-    return;
+    playAudioFromUrl(data.audioUrl);
+  } catch (err) {
+    console.error('speakEntry error:', err);
+    alert('音声の取得に失敗しました：' + err.message);
+  } finally {
+    if (btnEl) btnEl.disabled = false;
   }
-
-  const onVoicesChanged = () => {
-    synth.removeEventListener('voiceschanged', onVoicesChanged);
-    speak();
-  };
-  synth.addEventListener('voiceschanged', onVoicesChanged);
-  synth.getVoices();
 }
 
 function speakSentence(ev, id) {
   ev.stopPropagation();
   const e = entries.find(x => x.id === id);
-  speakEnglishText(e?.examples?.[e.idx]?.en);
+  if (!e) return;
+  speakEntry(e.id, e.idx, ev.currentTarget);
 }
 
 function speakReviewSentence(ev) {
   ev.stopPropagation();
-  speakEnglishText(reviewState.fullSentence);
-}
-
-if ('speechSynthesis' in window) {
-  window.speechSynthesis.addEventListener('voiceschanged', () => {
-    getEnglishVoices();
-  });
-  window.speechSynthesis.getVoices();
+  if (reviewState.entryId == null) return;
+  speakEntry(reviewState.entryId, reviewState.exampleIdx ?? 0, ev.currentTarget);
 }
 
 function escapeRegExp(s) {
