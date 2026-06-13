@@ -738,15 +738,15 @@ function getReviewAnswerParts(en, keyword, input) {
     return { core: parts.core, fullTerm: parts.core, suffix: parts.trailing };
   }
   const idx = en.toLowerCase().indexOf(found.matched.toLowerCase());
-  const parts = splitAnswerAndPunctuation(found.matched);
   const fullTerm = getFullTermFromSentence(en, found.matched);
+  const parts = splitAnswerAndPunctuation(fullTerm);
   let suffix = parts.trailing;
   if (!suffix && idx >= 0) {
-    const after = en.slice(idx + found.matched.length);
+    const after = en.slice(idx + fullTerm.length);
     const pm = after.match(/^([?!.,;:]+)/);
     if (pm) suffix = pm[1];
   }
-  return { core: parts.core, fullTerm, suffix };
+  return { core: parts.core, fullTerm: parts.core, suffix };
 }
 
 function buildBlankHtml(matchedText) {
@@ -777,29 +777,25 @@ function applyDialogueBreaksJa(text) {
 }
 
 function makeClozeHtml(en, keyword, input) {
-  for (const term of [keyword, input]) {
-    const t = String(term || '').trim();
-    if (!t) continue;
-    const re = new RegExp(escapeRegExp(t), 'i');
-    const match = en.match(re);
-    if (match && match.index != null) {
-      const before = escHtml(en.slice(0, match.index));
-      let after = en.slice(match.index + match[0].length);
-      const { core, trailing } = splitAnswerAndPunctuation(match[0]);
-      let suffix = trailing;
-      if (!suffix) {
-        const pm = after.match(/^([?!.,;:]+)/);
-        if (pm) {
-          suffix = pm[1];
-          after = after.slice(suffix.length);
-        }
-      }
-      return applyDialogueBreaksEn(
-        before + buildBlankHtml(core) + escHtml(suffix) + escHtml(after)
-      );
+  const found = findTermInSentence(en, keyword, input);
+  if (!found) return applyDialogueBreaksEn(escHtml(en));
+
+  const idx = en.toLowerCase().indexOf(found.matched.toLowerCase());
+  const fullTerm = getFullTermFromSentence(en, found.matched);
+  const before = escHtml(en.slice(0, idx));
+  let after = en.slice(idx + fullTerm.length);
+  const { core, trailing } = splitAnswerAndPunctuation(fullTerm);
+  let suffix = trailing;
+  if (!suffix) {
+    const pm = after.match(/^([?!.,;:]+)/);
+    if (pm) {
+      suffix = pm[1];
+      after = after.slice(suffix.length);
     }
   }
-  return applyDialogueBreaksEn(escHtml(en));
+  return applyDialogueBreaksEn(
+    before + buildBlankHtml(core) + escHtml(suffix) + escHtml(after)
+  );
 }
 
 function buildReviewCandidates(prevId, prevIdx) {
