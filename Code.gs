@@ -11,6 +11,7 @@ function doGet(e) {
   if (action === 'getAll') return handleGetAll();
   if (action === 'health') return handleHealth();
   if (action === 'getAudio') return handleGetAudio(e.parameter.id, Number(e.parameter.idx || 0));
+  if (action === 'streamAudio') return handleStreamAudio(e.parameter.id, Number(e.parameter.idx || 0));
   return jsonResponse({ error: 'unknown action' });
 }
 
@@ -369,6 +370,27 @@ function saveAudioToDrive(audioBytes, entryId, idx) {
   file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
 
   return 'https://drive.google.com/uc?export=download&id=' + file.getId();
+}
+
+function getAudioFileByEntry(entryId, idx) {
+  const folder = getOrCreateAudioFolder();
+  const fileName = entryId + '_' + idx + '.mp3';
+  const files = folder.getFilesByName(fileName);
+  return files.hasNext() ? files.next() : null;
+}
+
+/**
+ * Drive URL は <audio> から CORS/リダイレクトで再生できないため、GAS 経由で mp3 を配信する
+ */
+function handleStreamAudio(id, idx) {
+  if (id == null || id === '') {
+    return ContentService.createTextOutput('id required').setMimeType(ContentService.MimeType.TEXT);
+  }
+  const file = getAudioFileByEntry(id, idx);
+  if (!file) {
+    return ContentService.createTextOutput('audio not found').setMimeType(ContentService.MimeType.TEXT);
+  }
+  return file.getBlob().setContentType('audio/mpeg');
 }
 
 function getOrCreateAudioFolder() {

@@ -1424,6 +1424,10 @@ function escHtml(s) {
 
 let currentAudio = null;
 
+function streamAudioUrl(entryId, idx) {
+  return GAS_URL + '?action=streamAudio&id=' + encodeURIComponent(entryId) + '&idx=' + idx;
+}
+
 function playAudioFromUrl(url) {
   if (currentAudio) {
     currentAudio.pause();
@@ -1444,28 +1448,26 @@ async function speakEntry(entryId, idx, btnEl) {
   const key = String(idx);
   const cachedUrl = entry.audioUrls?.[key];
 
-  if (cachedUrl) {
-    playAudioFromUrl(cachedUrl);
-    return;
+  if (!cachedUrl) {
+    if (btnEl) btnEl.disabled = true;
+    try {
+      const res = await fetch(GAS_URL + '?action=getAudio&id=' + entryId + '&idx=' + idx);
+      const data = await res.json();
+      if (data.error) throw new Error(data.error);
+      if (!data.audioUrl) throw new Error('audioUrl が返されませんでした');
+
+      if (!entry.audioUrls) entry.audioUrls = {};
+      entry.audioUrls[key] = data.audioUrl;
+    } catch (err) {
+      console.error('speakEntry error:', err);
+      alert('音声の取得に失敗しました：' + err.message);
+      return;
+    } finally {
+      if (btnEl) btnEl.disabled = false;
+    }
   }
 
-  if (btnEl) btnEl.disabled = true;
-  try {
-    const res = await fetch(GAS_URL + '?action=getAudio&id=' + entryId + '&idx=' + idx);
-    const data = await res.json();
-    if (data.error) throw new Error(data.error);
-    if (!data.audioUrl) throw new Error('audioUrl が返されませんでした');
-
-    if (!entry.audioUrls) entry.audioUrls = {};
-    entry.audioUrls[key] = data.audioUrl;
-
-    playAudioFromUrl(data.audioUrl);
-  } catch (err) {
-    console.error('speakEntry error:', err);
-    alert('音声の取得に失敗しました：' + err.message);
-  } finally {
-    if (btnEl) btnEl.disabled = false;
-  }
+  playAudioFromUrl(streamAudioUrl(entryId, idx));
 }
 
 function speakSentence(ev, id) {
