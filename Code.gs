@@ -3,8 +3,15 @@ const CLAUDE_MODEL = 'claude-sonnet-4-6';
 const DRIVE_FOLDER_NAME = 'EnglishPhrase_Audio';
 const EXAMPLES_PER_ENTRY = 5;
 const OPENAI_TTS_MODEL = 'gpt-4o-mini-tts';
-const OPENAI_TTS_VOICE = 'nova';
-const OPENAI_TTS_INSTRUCTIONS = 'Speak clearly and at a moderate pace, suitable for English language learning. Pronounce each word distinctly.';
+const OPENAI_TTS_MALE_VOICES = ['onyx', 'echo', 'fable'];
+const OPENAI_TTS_FEMALE_VOICES = ['nova', 'shimmer', 'coral'];
+const OPENAI_TTS_INSTRUCTIONS =
+  'Native English speaker for shadowing practice. Moderate pace—not rushed, not slow. ' +
+  'Word stress: make stressed syllables noticeably higher, longer, and louder. ' +
+  'Sentence rhythm: stress content words (nouns, verbs, adjectives, adverbs); reduce function words (the, to, of, and, a, can) with shorter, softer delivery. ' +
+  'Connected speech: link words naturally where appropriate; do not pause between every word. ' +
+  'Intonation: use a clear falling tone at the end of statements and WH-questions; use a rising tone only for yes/no questions. ' +
+  'Sound like a clear, natural example for a learner to mimic—not flat, not theatrical.';
 
 function doGet(e) {
   const action = e.parameter.action;
@@ -439,13 +446,25 @@ function onOpen() {
   }
 }
 
-function callOpenAiTts(text) {
+function pickTtsVoiceForExample(entryId, idx) {
+  const seed = String(entryId) + ':' + String(idx);
+  let hash = 0;
+  for (let i = 0; i < seed.length; i++) {
+    hash = ((hash << 5) - hash) + seed.charCodeAt(i);
+    hash |= 0;
+  }
+  const useMale = Math.abs(hash) % 2 === 0;
+  const pool = useMale ? OPENAI_TTS_MALE_VOICES : OPENAI_TTS_FEMALE_VOICES;
+  return pool[Math.abs(hash >> 8) % pool.length];
+}
+
+function callOpenAiTts(text, entryId, idx) {
   const apiKey = PropertiesService.getScriptProperties().getProperty('OPENAI_API_KEY');
   if (!apiKey) throw new Error('OPENAI_API_KEY がスクリプトプロパティに未設定です。');
 
   const payload = {
     model: OPENAI_TTS_MODEL,
-    voice: OPENAI_TTS_VOICE,
+    voice: pickTtsVoiceForExample(entryId, idx),
     input: text,
     instructions: OPENAI_TTS_INSTRUCTIONS,
     response_format: 'mp3'
@@ -540,7 +559,7 @@ function generateAudioForAllExamples(entry, existingUrls) {
     const text = examples[i] && examples[i].en;
     if (!text) continue;
     try {
-      const audioBytes = callOpenAiTts(text);
+      const audioBytes = callOpenAiTts(text, entry.id, i);
       const url = saveAudioToDrive(audioBytes, entry.id, i);
       audioUrls[key] = url;
       Utilities.sleep(300);
@@ -582,7 +601,7 @@ function handleGetAudio(id, idx) {
     if (!text) return jsonResponse({ error: 'example not found' });
 
     try {
-      const audioBytes = callOpenAiTts(text);
+      const audioBytes = callOpenAiTts(text, entry.id, i);
       const url = saveAudioToDrive(audioBytes, id, idx);
       audioUrls[key] = url;
       sheet.getRange(i + 1, 10).setValue(JSON.stringify(audioUrls));
