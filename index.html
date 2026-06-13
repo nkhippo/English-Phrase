@@ -595,7 +595,7 @@
     <div class="section-title">復習</div>
     <div class="review-en-row">
       <div class="review-en" id="review-en"></div>
-      <button type="button" class="speak-btn review-speak-btn" onclick="speakReviewSentence(event)" aria-label="英文を読み上げ">
+      <button type="button" class="speak-btn review-speak-btn hidden" id="review-speak-btn" onclick="speakReviewSentence(event)" aria-label="英文を読み上げ">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
           <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon>
           <path d="M15.54 8.46a5 5 0 0 1 0 7.07"></path>
@@ -867,6 +867,11 @@ function loadReviewQuestion() {
   const btn = document.getElementById('review-btn');
   btn.textContent = '答え合わせ';
   btn.disabled = false;
+
+  const reviewSpeakBtn = document.getElementById('review-speak-btn');
+  if (reviewSpeakBtn) {
+    reviewSpeakBtn.classList.toggle('hidden', !hasEntryAudio(entry, exampleIdx));
+  }
 }
 
 function isReviewAnswerCorrect(userAnswer, keyword, input, correctTerm, fullTerm) {
@@ -1374,7 +1379,7 @@ function render() {
     const posHtml = e.pos
       ? `<span class="pos">${escHtml(POS_LABELS[e.pos] || e.pos)}</span>`
       : '';
-    const speakBtn = ex.en
+    const speakBtn = ex.en && hasEntryAudio(e, e.idx)
       ? `<button type="button" class="speak-btn" onclick="speakSentence(event, ${e.id})" aria-label="英文を読み上げ">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
             <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon>
@@ -1420,9 +1425,13 @@ function escHtml(s) {
     .replace(/"/g, '&quot;');
 }
 
-// ── 音声再生 ──
+// ── 音声再生（OpenAI TTS / Drive キャッシュのみ） ──
 
 let currentAudio = null;
+
+function hasEntryAudio(entry, idx) {
+  return !!(entry?.audioUrls?.[String(idx)]);
+}
 
 function playAudioFromUrl(url) {
   if (currentAudio) {
@@ -1443,7 +1452,7 @@ function playAudioFromUrl(url) {
 
 async function speakEntry(entryId, idx, btnEl) {
   const entry = entries.find(e => String(e.id) === String(entryId));
-  if (!entry) return;
+  if (!entry || !hasEntryAudio(entry, idx)) return;
 
   if (btnEl) btnEl.disabled = true;
   try {
@@ -1452,14 +1461,10 @@ async function speakEntry(entryId, idx, btnEl) {
     if (data.error) throw new Error(data.error);
     if (!data.audioBase64) throw new Error('audioBase64 が返されませんでした');
 
-    const key = String(idx);
-    if (!entry.audioUrls) entry.audioUrls = {};
-    if (data.audioUrl) entry.audioUrls[key] = data.audioUrl;
-
     playAudioFromUrl('data:audio/mpeg;base64,' + data.audioBase64);
   } catch (err) {
     console.error('speakEntry error:', err);
-    alert('音声の取得に失敗しました：' + err.message);
+    alert('音声の再生に失敗しました：' + err.message);
   } finally {
     if (btnEl) btnEl.disabled = false;
   }
