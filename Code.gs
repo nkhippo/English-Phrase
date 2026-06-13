@@ -601,7 +601,7 @@ function handleGetAudio(id, idx) {
     if (!text) return jsonResponse({ error: 'example not found' });
 
     try {
-      const audioBytes = callOpenAiTts(text, entry.id, i);
+      const audioBytes = callOpenAiTts(text, id, idx);
       const url = saveAudioToDrive(audioBytes, id, idx);
       audioUrls[key] = url;
       sheet.getRange(i + 1, 10).setValue(JSON.stringify(audioUrls));
