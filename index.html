@@ -1080,7 +1080,7 @@ async function saveEntry() {
   }
   btn.disabled = true;
   st.className = 'status';
-  st.innerHTML = '<span class="spinner"></span><span>AIが例文を生成中…</span>';
+  st.innerHTML = '<span class="spinner"></span><span>例文・音声を生成中…サーバー側で処理しています。完了表示までこのタブを閉じないでください（30秒〜1分程度）</span>';
 
   try {
     const res = await fetch(GAS_URL, {
@@ -1099,7 +1099,10 @@ async function saveEntry() {
     noteEl.value = '';
     render();
     st.className = 'status';
-    st.innerHTML = '✓ 保存しました（例文5件）';
+    const audioCount = Object.keys(entry.audioUrls || {}).length;
+    st.innerHTML = audioCount > 0
+      ? '✓ 保存しました（例文5件・音声' + audioCount + '件）'
+      : '✓ 保存しました（例文5件・音声は未生成）';
     setTimeout(() => { st.innerHTML = ''; }, 3000);
   } catch (err) {
     console.error(err);
