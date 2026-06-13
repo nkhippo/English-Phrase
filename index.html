@@ -619,7 +619,7 @@
 <button type="button" class="scroll-fab scroll-fab-bottom hidden" id="scroll-bottom" onclick="scrollToListBottom()" aria-label="一覧の末尾へ">↓</button>
 
 <script>
-const GAS_URL = 'https://script.google.com/macros/s/AKfycbxSRyz0D-jOYk9PrPPpP5qV4QY3NZTK3MFu9Gxobo00pxCwrDbvphi_mxPTAd6RZRdA/exec';
+const GAS_URL = 'https://script.google.com/macros/s/AKfycbyCMG_P0Bd2wZWEJcZcsbXe5-hRmb9wLaStBC53o_SLdKsq0wV3PHzB11Mv6qRWvxo6/exec';
 const API_KEY_STORAGE = 'phrase_anthropic_api_key';
 const SORT_STORAGE = 'phrase_card_sort_times';
 const FILTER_STORAGE = 'phrase_pos_filter';
@@ -1424,10 +1424,6 @@ function escHtml(s) {
 
 let currentAudio = null;
 
-function streamAudioUrl(entryId, idx) {
-  return GAS_URL + '?action=streamAudio&id=' + encodeURIComponent(entryId) + '&idx=' + idx;
-}
-
 function playAudioFromUrl(url) {
   if (currentAudio) {
     currentAudio.pause();
@@ -1449,29 +1445,24 @@ async function speakEntry(entryId, idx, btnEl) {
   const entry = entries.find(e => String(e.id) === String(entryId));
   if (!entry) return;
 
-  const key = String(idx);
-  const cachedUrl = entry.audioUrls?.[key];
+  if (btnEl) btnEl.disabled = true;
+  try {
+    const res = await fetch(GAS_URL + '?action=getAudio&id=' + entryId + '&idx=' + idx);
+    const data = await res.json();
+    if (data.error) throw new Error(data.error);
+    if (!data.audioBase64) throw new Error('audioBase64 が返されませんでした');
 
-  if (!cachedUrl) {
-    if (btnEl) btnEl.disabled = true;
-    try {
-      const res = await fetch(GAS_URL + '?action=getAudio&id=' + entryId + '&idx=' + idx);
-      const data = await res.json();
-      if (data.error) throw new Error(data.error);
-      if (!data.audioUrl) throw new Error('audioUrl が返されませんでした');
+    const key = String(idx);
+    if (!entry.audioUrls) entry.audioUrls = {};
+    if (data.audioUrl) entry.audioUrls[key] = data.audioUrl;
 
-      if (!entry.audioUrls) entry.audioUrls = {};
-      entry.audioUrls[key] = data.audioUrl;
-    } catch (err) {
-      console.error('speakEntry error:', err);
-      alert('音声の取得に失敗しました：' + err.message);
-      return;
-    } finally {
-      if (btnEl) btnEl.disabled = false;
-    }
+    playAudioFromUrl('data:audio/mpeg;base64,' + data.audioBase64);
+  } catch (err) {
+    console.error('speakEntry error:', err);
+    alert('音声の取得に失敗しました：' + err.message);
+  } finally {
+    if (btnEl) btnEl.disabled = false;
   }
-
-  playAudioFromUrl(streamAudioUrl(entryId, idx));
 }
 
 function speakSentence(ev, id) {

@@ -11,7 +11,6 @@ function doGet(e) {
   if (action === 'getAll') return handleGetAll();
   if (action === 'health') return handleHealth();
   if (action === 'getAudio') return handleGetAudio(e.parameter.id, Number(e.parameter.idx || 0));
-  if (action === 'streamAudio') return handleStreamAudio(e.parameter.id, Number(e.parameter.idx || 0));
   return jsonResponse({ error: 'unknown action' });
 }
 
@@ -388,6 +387,13 @@ function getAudioFileIdFromSheet(entryId, idx) {
   return '';
 }
 
+function encodeAudioFileResponse(file, audioUrl) {
+  return jsonResponse({
+    audioUrl: audioUrl || '',
+    audioBase64: Utilities.base64Encode(file.getBlob().getBytes())
+  });
+}
+
 function getAudioFileByEntry(entryId, idx) {
   const folder = getOrCreateAudioFolder();
   const fileName = entryId + '_' + idx + '.mp3';
@@ -399,20 +405,6 @@ function getAudioFileByEntry(entryId, idx) {
     try { return DriveApp.getFileById(fileId); } catch (e) {}
   }
   return null;
-}
-
-/**
- * Drive URL は <audio> から CORS/リダイレクトで再生できないため、GAS 経由で mp3 を配信する
- */
-function handleStreamAudio(id, idx) {
-  if (id == null || id === '') {
-    return ContentService.createTextOutput('id required').setMimeType(ContentService.MimeType.TEXT);
-  }
-  const file = getAudioFileByEntry(id, idx);
-  if (!file) {
-    return ContentService.createTextOutput('audio not found').setMimeType(ContentService.MimeType.TEXT);
-  }
-  return ContentService.createBinaryOutput(file.getBlob().getBytes()).setMimeType('audio/mpeg');
 }
 
 function getOrCreateAudioFolder() {
@@ -468,7 +460,8 @@ function handleGetAudio(id, idx) {
     const key = String(idx);
 
     if (audioUrls[key]) {
-      return jsonResponse({ audioUrl: audioUrls[key] });
+      const file = getAudioFileByEntry(id, idx);
+      if (file) return encodeAudioFileResponse(file, audioUrls[key]);
     }
 
     const examples = JSON.parse(rows[i][3] || '[]');
@@ -480,7 +473,9 @@ function handleGetAudio(id, idx) {
       const url = saveAudioToDrive(audioBytes, id, idx);
       audioUrls[key] = url;
       sheet.getRange(i + 1, 10).setValue(JSON.stringify(audioUrls));
-      return jsonResponse({ audioUrl: url });
+      const file = getAudioFileByEntry(id, idx);
+      if (!file) return jsonResponse({ error: 'audio save failed' });
+      return encodeAudioFileResponse(file, url);
     } catch (err) {
       return jsonResponse({ error: err.message });
     }
