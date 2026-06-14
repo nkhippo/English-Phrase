@@ -538,18 +538,20 @@
 
   .audio-progress-bar {
     position: fixed;
-    left: 0;
-    right: 0;
-    bottom: env(safe-area-inset-bottom, 0px);
+    left: 50%;
+    transform: translateX(-50%);
+    bottom: calc(6px + env(safe-area-inset-bottom, 0px));
     z-index: 100;
     display: flex;
     align-items: center;
     gap: 8px;
+    width: min(476px, calc(100vw - 24px - env(safe-area-inset-left, 0px) - env(safe-area-inset-right, 0px)));
     height: var(--audio-bar-height);
-    padding: 0 12px;
+    padding: 0 10px;
     background: var(--surface);
-    border-top: 1px solid var(--border-strong);
-    box-shadow: 0 -2px 10px rgba(0,0,0,0.08);
+    border: 1px solid var(--border-strong);
+    border-radius: 10px;
+    box-shadow: 0 2px 12px rgba(0,0,0,0.12);
   }
   .audio-progress-bar.hidden { display: none !important; }
   .audio-progress-track {
@@ -585,10 +587,10 @@
   }
   .audio-progress-close:hover { background: var(--accent-light); color: var(--accent-text); }
   body.audio-progress-visible {
-    padding-bottom: calc(var(--audio-bar-height) + env(safe-area-inset-bottom, 0px));
+    padding-bottom: calc(var(--audio-bar-height) + 14px + env(safe-area-inset-bottom, 0px));
   }
   body.audio-progress-visible .scroll-fab-bottom {
-    bottom: calc(var(--audio-bar-height) + 8px + env(safe-area-inset-bottom, 0px));
+    bottom: calc(var(--audio-bar-height) + 14px + env(safe-area-inset-bottom, 0px));
   }
 </style>
 </head>
