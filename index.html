@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>Phrase — 英語フレーズ記録</title>
 <link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
 <style>
@@ -18,6 +18,7 @@
     --accent-light: #e8f0ec;
     --accent-text: #1d3329;
     --danger: #c0392b;
+    --audio-bar-height: 34px;
   }
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body {
@@ -539,13 +540,13 @@
     position: fixed;
     left: 0;
     right: 0;
-    bottom: 0;
+    bottom: env(safe-area-inset-bottom, 0px);
     z-index: 100;
     display: flex;
     align-items: center;
     gap: 8px;
-    min-height: 32px;
-    padding: 5px 10px calc(5px + env(safe-area-inset-bottom, 0px));
+    height: var(--audio-bar-height);
+    padding: 0 12px;
     background: var(--surface);
     border-top: 1px solid var(--border-strong);
     box-shadow: 0 -2px 10px rgba(0,0,0,0.08);
@@ -584,9 +585,11 @@
   }
   .audio-progress-close:hover { background: var(--accent-light); color: var(--accent-text); }
   body.audio-progress-visible {
-    padding-bottom: calc(32px + env(safe-area-inset-bottom, 0px));
+    padding-bottom: calc(var(--audio-bar-height) + env(safe-area-inset-bottom, 0px));
   }
-  body.audio-progress-visible .scroll-fab-bottom { bottom: calc(40px + env(safe-area-inset-bottom, 0px)); }
+  body.audio-progress-visible .scroll-fab-bottom {
+    bottom: calc(var(--audio-bar-height) + 8px + env(safe-area-inset-bottom, 0px));
+  }
 </style>
 </head>
 <body>
