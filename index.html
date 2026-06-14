@@ -540,51 +540,53 @@
     left: 0;
     right: 0;
     bottom: 0;
-    z-index: 40;
+    z-index: 100;
     display: flex;
     align-items: center;
-    gap: 8px;
-    height: 36px;
-    padding: 0 12px;
+    gap: 10px;
+    min-height: 44px;
+    padding: 8px 12px calc(8px + env(safe-area-inset-bottom, 0px));
     background: var(--surface);
     border-top: 1px solid var(--border-strong);
-    box-shadow: 0 -2px 10px rgba(0,0,0,0.06);
+    box-shadow: 0 -4px 16px rgba(0,0,0,0.1);
   }
-  .audio-progress-bar.hidden { display: none; }
+  .audio-progress-bar.hidden { display: none !important; }
   .audio-progress-track {
     flex: 1;
     min-width: 0;
-    height: 6px;
-    border-radius: 3px;
-    background: var(--border);
+    height: 8px;
+    border-radius: 4px;
+    background: #d8d8d3;
     cursor: pointer;
     position: relative;
-    touch-action: none;
+    touch-action: manipulation;
   }
   .audio-progress-fill {
     height: 100%;
     width: 0%;
-    border-radius: 3px;
+    border-radius: 4px;
     background: var(--accent);
     pointer-events: none;
-    transition: none;
   }
   .audio-progress-close {
     flex-shrink: 0;
-    width: 28px;
-    height: 28px;
+    width: 32px;
+    height: 32px;
     padding: 0;
-    border: none;
-    border-radius: 6px;
-    background: transparent;
+    border: 1px solid var(--border-strong);
+    border-radius: 8px;
+    background: var(--bg);
     color: var(--muted);
-    font-size: 20px;
+    font-size: 18px;
     line-height: 1;
     cursor: pointer;
     transition: background 0.12s, color 0.12s;
   }
   .audio-progress-close:hover { background: var(--accent-light); color: var(--accent-text); }
-  body.audio-progress-visible .scroll-fab-bottom { bottom: 48px; }
+  body.audio-progress-visible {
+    padding-bottom: calc(44px + env(safe-area-inset-bottom, 0px));
+  }
+  body.audio-progress-visible .scroll-fab-bottom { bottom: calc(52px + env(safe-area-inset-bottom, 0px)); }
 </style>
 </head>
 <body>
@@ -1689,6 +1691,30 @@ const audioGeneratingIds = new Set();
 let audioCache = { key: null, url: null };
 let audioProgressRafId = null;
 let audioProgressDismissed = false;
+let activeAudioKey = null;
+let pendingProgressRevealKey = null;
+const audioProgressReadyKeys = new Set();
+
+function initAudioProgressReadyKeys() {
+  try {
+    for (let i = 0; i < localStorage.length; i++) {
+      const storageKey = localStorage.key(i);
+      if (storageKey && storageKey.startsWith(AUDIO_CACHE_STORAGE_PREFIX)) {
+        audioProgressReadyKeys.add(storageKey.slice(AUDIO_CACHE_STORAGE_PREFIX.length));
+      }
+    }
+  } catch (err) {
+    console.warn('Audio progress ready-key init failed:', err);
+  }
+}
+
+function markAudioProgressReady(key) {
+  audioProgressReadyKeys.add(key);
+}
+
+function isAudioProgressReady(key) {
+  return audioProgressReadyKeys.has(key);
+}
 
 function audioCacheKey(entryId, idx) {
   return String(entryId) + ':' + String(idx);
@@ -1710,8 +1736,12 @@ function getAudioBase64FromStorage(key) {
 function saveAudioToStorage(key, base64) {
   try {
     localStorage.setItem(audioStorageKey(key), base64);
+    markAudioProgressReady(key);
+    return true;
   } catch (err) {
     console.warn('Audio cache localStorage save failed:', err);
+    markAudioProgressReady(key);
+    return false;
   }
 }
 
@@ -1742,6 +1772,13 @@ function clearAudioCacheForEntry(entryId) {
   const prefix = String(entryId) + ':';
   if (audioCache.key && audioCache.key.startsWith(prefix)) {
     audioCache = { key: null, url: null };
+  }
+  for (const key of [...audioProgressReadyKeys]) {
+    if (key.startsWith(prefix)) audioProgressReadyKeys.delete(key);
+  }
+  if (activeAudioKey && activeAudioKey.startsWith(prefix)) activeAudioKey = null;
+  if (pendingProgressRevealKey && pendingProgressRevealKey.startsWith(prefix)) {
+    pendingProgressRevealKey = null;
   }
   removeAudioFromStorage(entryId);
 }
@@ -1799,6 +1836,15 @@ function startAudioProgressLoop(audio) {
 function onCurrentAudioEnded() {
   stopAudioProgressLoop();
   setAudioProgressFill(1);
+  if (
+    pendingProgressRevealKey &&
+    pendingProgressRevealKey === activeAudioKey &&
+    isAudioProgressReady(activeAudioKey) &&
+    !audioProgressDismissed
+  ) {
+    pendingProgressRevealKey = null;
+    showAudioProgressBar();
+  }
 }
 
 function onCurrentAudioError() {
@@ -1809,6 +1855,8 @@ function onCurrentAudioError() {
 
 function stopCurrentAudio() {
   stopAudioProgressLoop();
+  pendingProgressRevealKey = null;
+  activeAudioKey = null;
   if (currentAudio) {
     currentAudio.pause();
     currentAudio.removeEventListener('ended', onCurrentAudioEnded);
@@ -1830,6 +1878,7 @@ function playAudioWithProgress(url, key, options = {}) {
 
   const audio = new Audio(url);
   currentAudio = audio;
+  activeAudioKey = key;
   audio.currentTime = 0;
 
   audio.addEventListener('ended', onCurrentAudioEnded);
@@ -1841,7 +1890,7 @@ function playAudioWithProgress(url, key, options = {}) {
     const startLoop = () => startAudioProgressLoop(audio);
     if (audio.readyState >= 1) startLoop();
     else audio.addEventListener('loadedmetadata', startLoop, { once: true });
-  } else {
+  } else if (!showProgress) {
     hideAudioProgressBar();
   }
 
@@ -1960,30 +2009,33 @@ async function speakEntry(entryId, idx, btnEl) {
   if (!entry || !hasEntryAudio(entry, idx)) return;
 
   const key = audioCacheKey(entryId, idx);
-  const cachedUrl = getCachedAudioUrl(key);
-  if (cachedUrl) {
-    audioProgressDismissed = false;
-    playAudioWithProgress(cachedUrl, key, { showProgress: true });
-    return;
+  let url = getCachedAudioUrl(key);
+  const wasCachedBeforePlay = !!url;
+
+  if (!url) {
+    if (btnEl) btnEl.disabled = true;
+    try {
+      const res = await fetch(GAS_URL + '?action=getAudio&id=' + entryId + '&idx=' + idx);
+      const data = await res.json();
+      if (data.error) throw new Error(data.error);
+      if (!data.audioBase64) throw new Error('audioBase64 が返されませんでした');
+
+      url = 'data:audio/mpeg;base64,' + data.audioBase64;
+      audioCache = { key, url };
+      saveAudioToStorage(key, data.audioBase64);
+    } catch (err) {
+      console.error('speakEntry error:', err);
+      alert('音声の再生に失敗しました：' + err.message);
+      return;
+    } finally {
+      if (btnEl) btnEl.disabled = false;
+    }
   }
 
-  if (btnEl) btnEl.disabled = true;
-  try {
-    const res = await fetch(GAS_URL + '?action=getAudio&id=' + entryId + '&idx=' + idx);
-    const data = await res.json();
-    if (data.error) throw new Error(data.error);
-    if (!data.audioBase64) throw new Error('audioBase64 が返されませんでした');
-
-    const url = 'data:audio/mpeg;base64,' + data.audioBase64;
-    audioCache = { key, url };
-    saveAudioToStorage(key, data.audioBase64);
-    playAudioWithProgress(url, key, { showProgress: false });
-  } catch (err) {
-    console.error('speakEntry error:', err);
-    alert('音声の再生に失敗しました：' + err.message);
-  } finally {
-    if (btnEl) btnEl.disabled = false;
-  }
+  audioProgressDismissed = false;
+  const showProgress = wasCachedBeforePlay && isAudioProgressReady(key);
+  pendingProgressRevealKey = showProgress ? null : key;
+  playAudioWithProgress(url, key, { showProgress });
 }
 
 function speakSentence(ev, id) {
@@ -2035,6 +2087,7 @@ window.addEventListener('scroll', updateScrollTopVisibility, { passive: true });
 window.addEventListener('resize', updateScrollTopVisibility, { passive: true });
 
 document.getElementById('sort-select').value = sortMode;
+initAudioProgressReadyKeys();
 syncMemberSectionVisibility();
 syncApiSectionVisibility();
 checkGasHealth();
