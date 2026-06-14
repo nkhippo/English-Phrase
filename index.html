@@ -534,6 +534,57 @@
     flex-shrink: 0;
   }
   .review-answer-text { font-weight: 500; }
+
+  .audio-progress-bar {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 40;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    height: 36px;
+    padding: 0 12px;
+    background: var(--surface);
+    border-top: 1px solid var(--border-strong);
+    box-shadow: 0 -2px 10px rgba(0,0,0,0.06);
+  }
+  .audio-progress-bar.hidden { display: none; }
+  .audio-progress-track {
+    flex: 1;
+    min-width: 0;
+    height: 6px;
+    border-radius: 3px;
+    background: var(--border);
+    cursor: pointer;
+    position: relative;
+    touch-action: none;
+  }
+  .audio-progress-fill {
+    height: 100%;
+    width: 0%;
+    border-radius: 3px;
+    background: var(--accent);
+    pointer-events: none;
+    transition: none;
+  }
+  .audio-progress-close {
+    flex-shrink: 0;
+    width: 28px;
+    height: 28px;
+    padding: 0;
+    border: none;
+    border-radius: 6px;
+    background: transparent;
+    color: var(--muted);
+    font-size: 20px;
+    line-height: 1;
+    cursor: pointer;
+    transition: background 0.12s, color 0.12s;
+  }
+  .audio-progress-close:hover { background: var(--accent-light); color: var(--accent-text); }
+  body.audio-progress-visible .scroll-fab-bottom { bottom: 48px; }
 </style>
 </head>
 <body>
@@ -644,6 +695,13 @@
   </div>
 
   <div id="cards"><div class="loading-overlay"><span class="spinner"></span> 読み込み中…</div></div>
+</div>
+
+<div class="audio-progress-bar hidden" id="audio-progress-bar" aria-label="音声の再生位置">
+  <button type="button" class="audio-progress-close" onclick="closeAudioProgressBar(event)" aria-label="閉じる">×</button>
+  <div class="audio-progress-track" id="audio-progress-track" onclick="seekAudioProgress(event)">
+    <div class="audio-progress-fill" id="audio-progress-fill"></div>
+  </div>
 </div>
 
 <button type="button" class="scroll-fab scroll-fab-top hidden" id="scroll-top" onclick="scrollToListTop()" aria-label="一覧の先頭へ">↑</button>
@@ -861,6 +919,7 @@ function confirmEntryReview(id) {
 }
 
 function loadReviewQuestion() {
+  stopCurrentAudio();
   const picked = pickWeightedReviewQuestion(reviewState.entryId, reviewState.exampleIdx);
   const section = document.getElementById('review-section');
   if (!picked) {
@@ -1623,18 +1682,198 @@ function escHtml(s) {
 
 // ── 音声再生（OpenAI TTS / Drive キャッシュのみ） ──
 
+const AUDIO_CACHE_STORAGE_PREFIX = 'phrase_audio:';
+
 let currentAudio = null;
 const audioGeneratingIds = new Set();
 let audioCache = { key: null, url: null };
+let audioProgressRafId = null;
+let audioProgressDismissed = false;
 
 function audioCacheKey(entryId, idx) {
   return String(entryId) + ':' + String(idx);
+}
+
+function audioStorageKey(key) {
+  return AUDIO_CACHE_STORAGE_PREFIX + key;
+}
+
+function getAudioBase64FromStorage(key) {
+  try {
+    return localStorage.getItem(audioStorageKey(key));
+  } catch (err) {
+    console.warn('Audio cache localStorage read failed:', err);
+    return null;
+  }
+}
+
+function saveAudioToStorage(key, base64) {
+  try {
+    localStorage.setItem(audioStorageKey(key), base64);
+  } catch (err) {
+    console.warn('Audio cache localStorage save failed:', err);
+  }
+}
+
+function removeAudioFromStorage(entryId) {
+  const prefix = audioStorageKey(String(entryId) + ':');
+  const keysToRemove = [];
+  try {
+    for (let i = 0; i < localStorage.length; i++) {
+      const storageKey = localStorage.key(i);
+      if (storageKey && storageKey.startsWith(prefix)) keysToRemove.push(storageKey);
+    }
+    keysToRemove.forEach(k => localStorage.removeItem(k));
+  } catch (err) {
+    console.warn('Audio cache localStorage remove failed:', err);
+  }
+}
+
+function getCachedAudioUrl(key) {
+  if (audioCache.key === key && audioCache.url) return audioCache.url;
+  const base64 = getAudioBase64FromStorage(key);
+  if (!base64) return null;
+  const url = 'data:audio/mpeg;base64,' + base64;
+  audioCache = { key, url };
+  return url;
 }
 
 function clearAudioCacheForEntry(entryId) {
   const prefix = String(entryId) + ':';
   if (audioCache.key && audioCache.key.startsWith(prefix)) {
     audioCache = { key: null, url: null };
+  }
+  removeAudioFromStorage(entryId);
+}
+
+function stopAudioProgressLoop() {
+  if (audioProgressRafId != null) {
+    cancelAnimationFrame(audioProgressRafId);
+    audioProgressRafId = null;
+  }
+}
+
+function setAudioProgressFill(ratio) {
+  const fill = document.getElementById('audio-progress-fill');
+  if (!fill) return;
+  const clamped = Math.max(0, Math.min(1, ratio));
+  fill.style.width = (clamped * 100) + '%';
+}
+
+function showAudioProgressBar() {
+  const bar = document.getElementById('audio-progress-bar');
+  if (!bar) return;
+  bar.classList.remove('hidden');
+  document.body.classList.add('audio-progress-visible');
+}
+
+function hideAudioProgressBar() {
+  const bar = document.getElementById('audio-progress-bar');
+  if (!bar) return;
+  bar.classList.add('hidden');
+  document.body.classList.remove('audio-progress-visible');
+  setAudioProgressFill(0);
+}
+
+function closeAudioProgressBar(ev) {
+  if (ev) ev.stopPropagation();
+  audioProgressDismissed = true;
+  hideAudioProgressBar();
+}
+
+function startAudioProgressLoop(audio) {
+  stopAudioProgressLoop();
+  function tick() {
+    if (!currentAudio || currentAudio !== audio) return;
+    const duration = audio.duration;
+    if (duration && isFinite(duration)) {
+      setAudioProgressFill(audio.currentTime / duration);
+    }
+    if (!audio.paused && !audio.ended) {
+      audioProgressRafId = requestAnimationFrame(tick);
+    }
+  }
+  audioProgressRafId = requestAnimationFrame(tick);
+}
+
+function onCurrentAudioEnded() {
+  stopAudioProgressLoop();
+  setAudioProgressFill(1);
+}
+
+function onCurrentAudioError() {
+  console.error('Audio element error:', currentAudio && currentAudio.error);
+  stopAudioProgressLoop();
+  alert('音声の再生に失敗しました。');
+}
+
+function stopCurrentAudio() {
+  stopAudioProgressLoop();
+  if (currentAudio) {
+    currentAudio.pause();
+    currentAudio.removeEventListener('ended', onCurrentAudioEnded);
+    currentAudio.removeEventListener('error', onCurrentAudioError);
+    currentAudio = null;
+  }
+  hideAudioProgressBar();
+}
+
+function playAudioWithProgress(url, key, options = {}) {
+  const { showProgress = false } = options;
+  stopAudioProgressLoop();
+
+  if (currentAudio) {
+    currentAudio.pause();
+    currentAudio.removeEventListener('ended', onCurrentAudioEnded);
+    currentAudio.removeEventListener('error', onCurrentAudioError);
+  }
+
+  const audio = new Audio(url);
+  currentAudio = audio;
+  audio.currentTime = 0;
+
+  audio.addEventListener('ended', onCurrentAudioEnded);
+  audio.addEventListener('error', onCurrentAudioError);
+
+  if (showProgress && !audioProgressDismissed) {
+    showAudioProgressBar();
+    setAudioProgressFill(0);
+    const startLoop = () => startAudioProgressLoop(audio);
+    if (audio.readyState >= 1) startLoop();
+    else audio.addEventListener('loadedmetadata', startLoop, { once: true });
+  } else {
+    hideAudioProgressBar();
+  }
+
+  audio.play().catch(err => {
+    console.error('Audio play failed:', err);
+    alert('音声の再生に失敗しました。');
+  });
+}
+
+function seekAudioProgress(ev) {
+  ev.stopPropagation();
+  if (!currentAudio) return;
+
+  const track = document.getElementById('audio-progress-track');
+  if (!track) return;
+
+  const rect = track.getBoundingClientRect();
+  const clientX = ev.touches && ev.touches.length ? ev.touches[0].clientX : ev.clientX;
+  const ratio = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
+  const duration = currentAudio.duration;
+  if (!duration || !isFinite(duration)) return;
+
+  const wasStopped = currentAudio.paused || currentAudio.ended;
+  currentAudio.currentTime = ratio * duration;
+  setAudioProgressFill(ratio);
+
+  if (wasStopped) {
+    currentAudio.play().catch(err => {
+      console.error('Audio play failed:', err);
+      alert('音声の再生に失敗しました。');
+    });
+    startAudioProgressLoop(currentAudio);
   }
 }
 
@@ -1716,30 +1955,15 @@ function hasEntryAudio(entry, idx) {
   return !!(entry?.audioUrls?.[String(idx)]);
 }
 
-function playAudioFromUrl(url) {
-  if (currentAudio) {
-    currentAudio.pause();
-    currentAudio = null;
-  }
-  const audio = new Audio(url);
-  currentAudio = audio;
-  audio.addEventListener('error', () => {
-    console.error('Audio element error:', audio.error);
-    alert('音声の再生に失敗しました。');
-  });
-  audio.play().catch(err => {
-    console.error('Audio play failed:', err);
-    alert('音声の再生に失敗しました。');
-  });
-}
-
 async function speakEntry(entryId, idx, btnEl) {
   const entry = entries.find(e => String(e.id) === String(entryId));
   if (!entry || !hasEntryAudio(entry, idx)) return;
 
   const key = audioCacheKey(entryId, idx);
-  if (audioCache.key === key && audioCache.url) {
-    playAudioFromUrl(audioCache.url);
+  const cachedUrl = getCachedAudioUrl(key);
+  if (cachedUrl) {
+    audioProgressDismissed = false;
+    playAudioWithProgress(cachedUrl, key, { showProgress: true });
     return;
   }
 
@@ -1752,7 +1976,8 @@ async function speakEntry(entryId, idx, btnEl) {
 
     const url = 'data:audio/mpeg;base64,' + data.audioBase64;
     audioCache = { key, url };
-    playAudioFromUrl(url);
+    saveAudioToStorage(key, data.audioBase64);
+    playAudioWithProgress(url, key, { showProgress: false });
   } catch (err) {
     console.error('speakEntry error:', err);
     alert('音声の再生に失敗しました：' + err.message);
