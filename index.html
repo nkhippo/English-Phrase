@@ -18,7 +18,9 @@
     --accent-light: #e8f0ec;
     --accent-text: #1d3329;
     --danger: #c0392b;
-    --audio-bar-height: 34px;
+    --audio-bar-height: 40px;
+    --audio-bar-side-inset: max(20px, env(safe-area-inset-left, 0px), env(safe-area-inset-right, 0px));
+    --audio-bar-bottom-gap: 12px;
   }
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body {
@@ -540,57 +542,74 @@
     position: fixed;
     left: 50%;
     transform: translateX(-50%);
-    bottom: calc(6px + env(safe-area-inset-bottom, 0px));
+    bottom: calc(var(--audio-bar-bottom-gap) + env(safe-area-inset-bottom, 0px));
     z-index: 100;
     display: flex;
     align-items: center;
-    gap: 8px;
-    width: min(476px, calc(100vw - 24px - env(safe-area-inset-left, 0px) - env(safe-area-inset-right, 0px)));
+    gap: 10px;
+    width: min(460px, calc(100vw - (var(--audio-bar-side-inset) * 2)));
     height: var(--audio-bar-height);
     padding: 0 10px;
     background: var(--surface);
     border: 1px solid var(--border-strong);
-    border-radius: 10px;
-    box-shadow: 0 2px 12px rgba(0,0,0,0.12);
+    border-radius: 12px;
+    box-shadow: 0 2px 14px rgba(0,0,0,0.14);
   }
   .audio-progress-bar.hidden { display: none !important; }
   .audio-progress-track {
     flex: 1;
     min-width: 0;
-    height: 6px;
-    border-radius: 3px;
-    background: #d8d8d3;
+    height: 3px;
+    border-radius: 2px;
+    background: #d0d6d2;
     cursor: pointer;
     position: relative;
     touch-action: manipulation;
+    overflow: visible;
   }
   .audio-progress-fill {
+    position: absolute;
+    left: 0;
+    top: 0;
     height: 100%;
     width: 0%;
-    border-radius: 3px;
+    border-radius: 2px;
     background: var(--accent);
+    pointer-events: none;
+  }
+  .audio-progress-thumb {
+    position: absolute;
+    top: 50%;
+    left: 0%;
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background: var(--accent);
+    border: 2px solid var(--surface);
+    box-shadow: 0 0 0 1px rgba(45, 74, 62, 0.28);
+    transform: translate(-50%, -50%);
     pointer-events: none;
   }
   .audio-progress-close {
     flex-shrink: 0;
-    width: 24px;
-    height: 24px;
+    width: 22px;
+    height: 22px;
     padding: 0;
     border: 1px solid var(--border-strong);
     border-radius: 6px;
     background: var(--bg);
     color: var(--muted);
-    font-size: 16px;
+    font-size: 14px;
     line-height: 1;
     cursor: pointer;
     transition: background 0.12s, color 0.12s;
   }
   .audio-progress-close:hover { background: var(--accent-light); color: var(--accent-text); }
   body.audio-progress-visible {
-    padding-bottom: calc(var(--audio-bar-height) + 14px + env(safe-area-inset-bottom, 0px));
+    padding-bottom: calc(var(--audio-bar-height) + var(--audio-bar-bottom-gap) + 8px + env(safe-area-inset-bottom, 0px));
   }
   body.audio-progress-visible .scroll-fab-bottom {
-    bottom: calc(var(--audio-bar-height) + 14px + env(safe-area-inset-bottom, 0px));
+    bottom: calc(var(--audio-bar-height) + var(--audio-bar-bottom-gap) + 12px + env(safe-area-inset-bottom, 0px));
   }
 </style>
 </head>
@@ -707,6 +726,7 @@
 <div class="audio-progress-bar hidden" id="audio-progress-bar" aria-label="音声の再生位置">
   <div class="audio-progress-track" id="audio-progress-track" onclick="seekAudioProgress(event)">
     <div class="audio-progress-fill" id="audio-progress-fill"></div>
+    <div class="audio-progress-thumb" id="audio-progress-thumb"></div>
   </div>
   <button type="button" class="audio-progress-close" onclick="closeAudioProgressBar(event)" aria-label="閉じる">×</button>
 </div>
@@ -1797,9 +1817,12 @@ function stopAudioProgressLoop() {
 
 function setAudioProgressFill(ratio) {
   const fill = document.getElementById('audio-progress-fill');
+  const thumb = document.getElementById('audio-progress-thumb');
   if (!fill) return;
   const clamped = Math.max(0, Math.min(1, ratio));
-  fill.style.width = (clamped * 100) + '%';
+  const percent = (clamped * 100) + '%';
+  fill.style.width = percent;
+  if (thumb) thumb.style.left = percent;
 }
 
 function showAudioProgressBar() {
