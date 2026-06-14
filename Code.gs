@@ -135,13 +135,15 @@ function findReusableEntryFromOtherMember(normalizedQuery, currentMember) {
   return best;
 }
 
-function memberAlreadyHasEntry(normalizedQuery, currentMember) {
+function memberHasInputAndKeyword(normalizedInput, normalizedKeyword, currentMember) {
   const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_NAME);
   const rows = sheet.getDataRange().getValues();
 
   for (let i = 1; i < rows.length; i++) {
-    if (!entryTextMatchesQuery(rows[i][1], rows[i][2], normalizedQuery)) continue;
-    if (normalizeMember(rows[i][10]) === currentMember) return true;
+    if (normalizeMember(rows[i][10]) !== currentMember) continue;
+    if (toLowerEntryText(rows[i][1]) !== normalizedInput) continue;
+    if (toLowerEntryText(rows[i][2]) !== normalizedKeyword) continue;
+    return true;
   }
   return false;
 }
@@ -152,10 +154,6 @@ function handleGenerateAndSave(input, note, apiKey, member) {
     if (!normalizedMember) throw new Error('メンバー名が未設定です。');
     const normalizedInput = toLowerEntryText(input);
     if (!normalizedInput) throw new Error('登録したい内容を入力してください。');
-
-    if (memberAlreadyHasEntry(normalizedInput, normalizedMember)) {
-      throw new Error('この単語はすでに登録されています。');
-    }
 
     const reused = findReusableEntryFromOtherMember(normalizedInput, normalizedMember);
     const entryId = Date.now();
@@ -193,6 +191,12 @@ function handleGenerateAndSave(input, note, apiKey, member) {
         audioUrls: {},
         member: normalizedMember
       };
+    }
+
+    const entryInput = toLowerEntryText(entry.input);
+    const entryKeyword = toLowerEntryText(entry.keyword);
+    if (memberHasInputAndKeyword(entryInput, entryKeyword, normalizedMember)) {
+      throw new Error('登録済みです');
     }
 
     appendEntry(entry);
