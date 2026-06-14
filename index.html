@@ -18,7 +18,7 @@
     --accent-light: #e8f0ec;
     --accent-text: #1d3329;
     --danger: #c0392b;
-    --audio-bar-height: 40px;
+    --audio-bar-height: 48px;
     --audio-bar-side-inset: max(20px, env(safe-area-inset-left, 0px), env(safe-area-inset-right, 0px));
     --audio-bar-bottom-gap: 12px;
     --scroll-fab-bottom-offset: calc(var(--audio-bar-height) + var(--audio-bar-bottom-gap) + 12px + env(safe-area-inset-bottom, 0px));
@@ -576,12 +576,23 @@
   .audio-progress-track {
     flex: 1;
     min-width: 0;
+    min-height: 36px;
+    padding: 10px 0;
+    display: flex;
+    align-items: center;
+    cursor: pointer;
+    position: relative;
+    touch-action: none;
+    -webkit-tap-highlight-color: transparent;
+    -webkit-user-select: none;
+    user-select: none;
+  }
+  .audio-progress-rail {
+    position: relative;
+    width: 100%;
     height: 3px;
     border-radius: 2px;
     background: #d0d6d2;
-    cursor: pointer;
-    position: relative;
-    touch-action: manipulation;
     overflow: visible;
   }
   .audio-progress-fill {
@@ -738,9 +749,11 @@
 </div>
 
 <div class="audio-progress-bar hidden" id="audio-progress-bar" aria-label="音声の再生位置">
-  <div class="audio-progress-track" id="audio-progress-track" onclick="seekAudioProgress(event)">
-    <div class="audio-progress-fill" id="audio-progress-fill"></div>
-    <div class="audio-progress-thumb" id="audio-progress-thumb"></div>
+  <div class="audio-progress-track" id="audio-progress-track">
+    <div class="audio-progress-rail">
+      <div class="audio-progress-fill" id="audio-progress-fill"></div>
+      <div class="audio-progress-thumb" id="audio-progress-thumb"></div>
+    </div>
   </div>
   <button type="button" class="audio-progress-close" onclick="closeAudioProgressBar(event)" aria-label="閉じる">×</button>
 </div>
@@ -1734,6 +1747,7 @@ let audioProgressDismissed = false;
 let activeAudioKey = null;
 let audioLoadingKey = null;
 let pendingProgressRevealKey = null;
+let audioScrubState = { active: false, pointerId: null, wasPlaying: false };
 const audioProgressReadyKeys = new Set();
 
 function initAudioProgressReadyKeys() {
@@ -1981,30 +1995,96 @@ function playAudioWithProgress(url, key, options = {}) {
   updateSpeakButtonStates();
 }
 
-function seekAudioProgress(ev) {
+function getAudioSeekRatio(clientX) {
+  const track = document.getElementById('audio-progress-track');
+  if (!track) return 0;
+  const rect = track.getBoundingClientRect();
+  return Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
+}
+
+function seekAudioToRatio(ratio) {
+  if (!currentAudio) return;
+  const duration = currentAudio.duration;
+  if (!duration || !isFinite(duration)) return;
+  currentAudio.currentTime = ratio * duration;
+  setAudioProgressFill(ratio);
+}
+
+function finishAudioProgressScrub(shouldResume) {
+  if (!audioScrubState.active) return;
+  const track = document.getElementById('audio-progress-track');
+  const pointerId = audioScrubState.pointerId;
+  audioScrubState.active = false;
+  audioScrubState.pointerId = null;
+
+  if (track && pointerId != null && track.hasPointerCapture(pointerId)) {
+    track.releasePointerCapture(pointerId);
+  }
+
+  if (!currentAudio || !shouldResume) {
+    updateSpeakButtonStates();
+    return;
+  }
+
+  currentAudio.play().catch(err => {
+    console.error('Audio play failed:', err);
+    alert('音声の再生に失敗しました。');
+  });
+  startAudioProgressLoop(currentAudio);
+  updateSpeakButtonStates();
+}
+
+function onAudioProgressPointerDown(ev) {
+  ev.preventDefault();
   ev.stopPropagation();
   if (!currentAudio) return;
 
   const track = document.getElementById('audio-progress-track');
   if (!track) return;
 
-  const rect = track.getBoundingClientRect();
-  const clientX = ev.touches && ev.touches.length ? ev.touches[0].clientX : ev.clientX;
-  const ratio = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
-  const duration = currentAudio.duration;
-  if (!duration || !isFinite(duration)) return;
+  audioScrubState.active = true;
+  audioScrubState.pointerId = ev.pointerId;
+  audioScrubState.wasPlaying = !currentAudio.paused && !currentAudio.ended;
 
-  const wasStopped = currentAudio.paused || currentAudio.ended;
-  currentAudio.currentTime = ratio * duration;
-  setAudioProgressFill(ratio);
-
-  if (wasStopped) {
-    currentAudio.play().catch(err => {
-      console.error('Audio play failed:', err);
-      alert('音声の再生に失敗しました。');
-    });
-    startAudioProgressLoop(currentAudio);
+  if (audioScrubState.wasPlaying) {
+    currentAudio.pause();
+    stopAudioProgressLoop();
   }
+
+  seekAudioToRatio(getAudioSeekRatio(ev.clientX));
+  track.setPointerCapture(ev.pointerId);
+  updateSpeakButtonStates();
+}
+
+function onAudioProgressPointerMove(ev) {
+  if (!audioScrubState.active || ev.pointerId !== audioScrubState.pointerId) return;
+  ev.preventDefault();
+  ev.stopPropagation();
+  if (!currentAudio) return;
+  seekAudioToRatio(getAudioSeekRatio(ev.clientX));
+}
+
+function onAudioProgressPointerUp(ev) {
+  if (!audioScrubState.active || ev.pointerId !== audioScrubState.pointerId) return;
+  ev.preventDefault();
+  ev.stopPropagation();
+  finishAudioProgressScrub(true);
+}
+
+function onAudioProgressPointerCancel(ev) {
+  if (!audioScrubState.active || ev.pointerId !== audioScrubState.pointerId) return;
+  ev.preventDefault();
+  ev.stopPropagation();
+  finishAudioProgressScrub(audioScrubState.wasPlaying);
+}
+
+function initAudioProgressScrub() {
+  const track = document.getElementById('audio-progress-track');
+  if (!track) return;
+  track.addEventListener('pointerdown', onAudioProgressPointerDown);
+  track.addEventListener('pointermove', onAudioProgressPointerMove);
+  track.addEventListener('pointerup', onAudioProgressPointerUp);
+  track.addEventListener('pointercancel', onAudioProgressPointerCancel);
 }
 
 function isEntryAudioGenerating(id) {
@@ -2182,6 +2262,7 @@ window.addEventListener('resize', updateScrollTopVisibility, { passive: true });
 
 document.getElementById('sort-select').value = sortMode;
 initAudioProgressReadyKeys();
+initAudioProgressScrub();
 syncMemberSectionVisibility();
 syncApiSectionVisibility();
 checkGasHealth();
