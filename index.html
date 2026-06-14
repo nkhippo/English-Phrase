@@ -32,6 +32,7 @@
 
   .header { margin-bottom: 0.75rem; }
   .header-row { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+  .header-links { display: flex; gap: 10px; flex-shrink: 0; }
   .header h1 {
     font-family: 'DM Serif Display', serif;
     font-size: 26px; font-weight: 400;
@@ -540,9 +541,22 @@
   <header class="header">
     <div class="header-row">
       <h1>Phrase</h1>
-      <button type="button" class="api-key-link hidden" id="api-key-toggle" onclick="showApiSection()">APIキーを変更</button>
+      <div class="header-links">
+        <button type="button" class="api-key-link hidden" id="member-toggle" onclick="showMemberSection()">名前を変更</button>
+        <button type="button" class="api-key-link hidden" id="api-key-toggle" onclick="showApiSection()">APIキーを変更</button>
+      </div>
     </div>
   </header>
+
+  <div class="input-section settings-section" id="member-section">
+    <div class="input-label">メンバー名</div>
+    <p class="settings-hint">
+      あなた専用のカードを表示・保存するための名前です。スプレッドシートの member 列と同じ名前を<strong>半角英小文字</strong>で入力してください（例：naoya）。この端末のブラウザにのみ保存されます。
+    </p>
+    <input type="text" id="member-name" class="api-input" placeholder="例：naoya" autocomplete="off" autocapitalize="off" spellcheck="false" maxlength="32" oninput="onMemberNameInput()">
+    <button type="button" class="secondary-btn" id="member-save-btn" onclick="saveMember()">名前を保存</button>
+    <div class="status member-status" id="member-st"></div>
+  </div>
 
   <div class="gas-banner hidden" id="gas-banner">
     <strong>GAS の外部接続権限が未設定です</strong>
@@ -636,7 +650,9 @@
 <button type="button" class="scroll-fab scroll-fab-bottom hidden" id="scroll-bottom" onclick="scrollToListBottom()" aria-label="一覧の末尾へ">↓</button>
 
 <script>
-const GAS_URL = 'https://script.google.com/macros/s/AKfycbyuiu7QSx8kXI3Xgl_aKaxMovIgsqxYxoU0UAglvRRcB8WxfjcbqbAFjiHxcxtJxt8U/exec';
+const GAS_URL = 'https://script.google.com/macros/s/AKfycbw16tvDT38ZkHTRLBzVarwauNPIry-CeM96I4hNSiWwBf_hohDoGKU5jI2srklLXzp-/exec';
+const MEMBER_STORAGE = 'phrase_member_name';
+const MEMBER_NAME_PATTERN = /^[a-z][a-z0-9_-]{1,31}$/;
 const API_KEY_STORAGE = 'phrase_anthropic_api_key';
 const SORT_STORAGE = 'phrase_card_sort_times';
 const FILTER_STORAGE = 'phrase_pos_filter';
@@ -957,7 +973,7 @@ function isCurrentReviewInFilter() {
 function renderReviewSection() {
   const section = document.getElementById('review-section');
   const pool = getReviewableEntries();
-  if (!entries.length || !pool.length) {
+  if (!getMember() || !pool.length) {
     section.classList.add('hidden');
     reviewState.entryId = null;
     return;
@@ -994,6 +1010,149 @@ function updateFilterSummary() {
   if (sortMode !== 'registered-desc') parts.push(SORT_LABELS[sortMode] || sortMode);
   el.textContent = parts.join(' · ');
   el.classList.toggle('hidden', !parts.length);
+}
+
+function normalizeMemberName(s) {
+  return String(s || '').trim().toLowerCase();
+}
+
+function validateMemberName(name) {
+  if (!name) return '名前を入力してください。';
+  if (!MEMBER_NAME_PATTERN.test(name)) {
+    return '半角英小文字で始まり、英小文字・数字・ハイフン・アンダースコアのみ、2〜32文字で入力してください。';
+  }
+  return '';
+}
+
+function onMemberNameInput() {
+  const input = document.getElementById('member-name');
+  const st = document.getElementById('member-st');
+  if (!input || !st) return;
+
+  const pos = input.selectionStart;
+  const normalized = input.value.toLowerCase().replace(/[^a-z0-9_-]/g, '');
+  if (input.value !== normalized) {
+    input.value = normalized;
+    const nextPos = Math.min(pos, normalized.length);
+    input.setSelectionRange(nextPos, nextPos);
+  }
+
+  const val = normalizeMemberName(input.value);
+  if (!val) {
+    if (!getMember()) {
+      st.className = 'status member-status err';
+      st.textContent = '未設定 — カードを表示・保存する前に名前を登録してください';
+    } else {
+      st.textContent = '';
+      st.className = 'status member-status';
+    }
+    return;
+  }
+
+  const err = validateMemberName(val);
+  if (err) {
+    st.className = 'status member-status err';
+    st.textContent = err;
+    return;
+  }
+
+  st.textContent = '';
+  st.className = 'status member-status';
+}
+
+function getMember() {
+  return normalizeMemberName(localStorage.getItem(MEMBER_STORAGE) || '');
+}
+
+function getMemberFilteredEntries() {
+  const member = getMember();
+  if (!member) return [];
+  return entries.filter(e => normalizeMemberName(e.member) === member);
+}
+
+function persistMemberName(val) {
+  localStorage.setItem(MEMBER_STORAGE, val);
+  const input = document.getElementById('member-name');
+  if (input) input.value = '';
+  syncMemberSectionVisibility();
+  render();
+}
+
+async function saveMember() {
+  const input = document.getElementById('member-name');
+  const st = document.getElementById('member-st');
+  const btn = document.getElementById('member-save-btn');
+  const val = normalizeMemberName(input.value);
+  const validationError = validateMemberName(val);
+  if (validationError) {
+    st.className = 'status member-status err';
+    st.textContent = validationError;
+    input.focus();
+    return;
+  }
+
+  if (btn) btn.disabled = true;
+  st.className = 'status member-status';
+  st.innerHTML = '<span class="spinner"></span><span>名前を確認中…</span>';
+
+  try {
+    const res = await fetch(GAS_URL + '?action=checkMember&member=' + encodeURIComponent(val));
+    const data = await res.json();
+    if (data.error) throw new Error(data.error);
+
+    if (!data.exists) {
+      st.textContent = '';
+      st.className = 'status member-status';
+      const ok = confirm(
+        '「' + val + '」はスプレッドシートにまだ登録されていません。\n' +
+        '新規ユーザーとして始めてもよろしいですか？'
+      );
+      if (!ok) {
+        st.className = 'status member-status err';
+        st.textContent = '名前を確認して、もう一度入力してください。';
+        input.value = '';
+        input.focus();
+        return;
+      }
+    }
+
+    persistMemberName(val);
+    st.className = 'status member-status';
+    st.textContent = '✓ 名前を保存しました';
+    setTimeout(() => {
+      if (getMember()) {
+        st.textContent = '';
+        st.className = 'status member-status';
+      }
+    }, 2500);
+  } catch (err) {
+    st.className = 'status member-status err';
+    st.textContent = err.message || '名前の確認に失敗しました。もう一度お試しください。';
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
+
+function syncMemberSectionVisibility() {
+  const section = document.getElementById('member-section');
+  const toggle = document.getElementById('member-toggle');
+  const st = document.getElementById('member-st');
+  const hasMember = !!getMember();
+  section.classList.toggle('hidden', hasMember);
+  toggle.classList.toggle('hidden', !hasMember);
+  if (hasMember) {
+    st.textContent = '';
+    st.className = 'status member-status';
+  } else {
+    st.className = 'status member-status err';
+    st.textContent = '未設定 — カードを表示・保存する前に名前を登録してください';
+  }
+}
+
+function showMemberSection() {
+  document.getElementById('member-section').classList.remove('hidden');
+  document.getElementById('member-name').focus();
+  document.getElementById('member-section').scrollIntoView({ behavior: 'smooth', block: 'center' });
 }
 
 function getApiKey() {
@@ -1060,7 +1219,15 @@ async function loadEntries() {
     const res = await fetch(GAS_URL + '?action=getAll');
     const data = await res.json();
     entries = (data.entries || []).map(e => {
-      const entry = { ...e, pos: e.pos || '', confirmedAt: e.confirmedAt || '', idx: 0, show: false, audioUrls: e.audioUrls || {} };
+      const entry = {
+        ...e,
+        member: normalizeMemberName(e.member || ''),
+        pos: e.pos || '',
+        confirmedAt: e.confirmedAt || '',
+        idx: 0,
+        show: false,
+        audioUrls: e.audioUrls || {}
+      };
       if (!entry.confirmedAt) {
         const legacy = getCardSortTime(entry.id);
         if (legacy > 0) entry.confirmedAt = legacy;
@@ -1082,41 +1249,47 @@ async function saveEntry() {
   const text = inp.value.trim();
   const note = noteEl.value.trim();
   if (!text) return;
-  const apiKey = getApiKey();
   const btn = document.getElementById('btn');
   const st = document.getElementById('st');
-  if (!apiKey) {
+  const member = getMember();
+  if (!member) {
     st.className = 'status err';
-    st.textContent = 'APIキーが未設定です。上の「APIキー設定」から登録してください。';
-    showApiSection();
+    st.textContent = 'メンバー名が未設定です。上の「メンバー名」から登録してください。';
+    showMemberSection();
     return;
   }
+  const apiKey = getApiKey();
   btn.disabled = true;
   st.className = 'status';
-  st.innerHTML = '<span class="spinner"></span><span>例文を生成中…（10〜30秒程度）</span>';
+  st.innerHTML = '<span class="spinner"></span><span>保存中…</span>';
 
   try {
     const res = await fetch(GAS_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-      body: JSON.stringify({ action: 'generateAndSave', input: text, note, apiKey })
+      body: JSON.stringify({ action: 'generateAndSave', input: text, note, apiKey: apiKey || '', member })
     });
     const data = await res.json();
     if (data.error) throw new Error(data.error);
 
     const entry = data.entry;
-    entries.push({ ...entry, pos: entry.pos || '', confirmedAt: '', idx: 0, show: false, audioUrls: entry.audioUrls || {} });
+    entries.push({ ...entry, member: entry.member || member, pos: entry.pos || '', confirmedAt: '', idx: 0, show: false, audioUrls: entry.audioUrls || {} });
     setCardSortTime(entry.id, -Date.now());
     applyListOrder();
     inp.value = '';
     noteEl.value = '';
     render();
     st.className = 'status';
-    st.innerHTML = '✓ 保存しました（例文5件）';
+    st.innerHTML = data.reused
+      ? '✓ 既存の例文を流用して保存しました'
+      : '✓ 保存しました（例文5件）';
     setTimeout(() => { st.innerHTML = ''; }, 3000);
   } catch (err) {
     console.error(err);
     st.className = 'status err';
+    if (/APIキー/.test(err.message || '')) {
+      showApiSection();
+    }
     if (isGasAuthError(err.message)) {
       showGasAuthBanner(true);
       st.textContent = 'GAS の外部接続権限が未設定です。上の手順で Apps Script を承認してください。';
@@ -1202,7 +1375,7 @@ function entryMatchesWordSearch(e, query) {
 }
 
 function getFilteredEntries() {
-  let list = entries;
+  let list = getMemberFilteredEntries();
   if (posFilter === 'none') list = list.filter(e => !e.pos);
   else if (posFilter !== 'all') list = list.filter(e => e.pos === posFilter);
   const q = wordSearchQuery.trim();
@@ -1219,7 +1392,7 @@ function onWordSearchInput() {
 
 function collectPosOptions() {
   const set = new Set();
-  entries.forEach(e => { if (e.pos) set.add(e.pos); });
+  getMemberFilteredEntries().forEach(e => { if (e.pos) set.add(e.pos); });
   return Array.from(set).sort();
 }
 
@@ -1234,7 +1407,7 @@ function renderPosFilters() {
     { id: 'all', label: 'すべて' },
     ...options.map(p => ({ id: p, label: POS_LABELS[p] || p })),
   ];
-  if (entries.some(e => !e.pos)) chips.push({ id: 'none', label: '未設定' });
+  if (getMemberFilteredEntries().some(e => !e.pos)) chips.push({ id: 'none', label: '未設定' });
   el.innerHTML = chips.map(c =>
     `<button type="button" class="chip${posFilter === c.id ? ' active' : ''}" onclick="setPosFilter('${escAttr(c.id)}')">${escHtml(c.label)}</button>`
   ).join('');
@@ -1326,7 +1499,7 @@ function tapCard(id) {
 function updateScrollTopVisibility() {
   const btn = document.getElementById('scroll-top');
   const first = document.querySelector('#cards .card');
-  if (!entries.length || !first) {
+  if (!getMemberFilteredEntries().length || !first) {
     btn.classList.add('hidden');
     return;
   }
@@ -1335,7 +1508,7 @@ function updateScrollTopVisibility() {
 }
 
 function updateScrollFabVisibility() {
-  const showList = entries.length > 0;
+  const showList = getMemberFilteredEntries().length > 0;
   document.getElementById('scroll-bottom').classList.toggle('hidden', !showList);
   updateScrollTopVisibility();
 }
@@ -1357,8 +1530,21 @@ function render() {
   const listSection = document.getElementById('list-section');
   const sortSelect = document.getElementById('sort-select');
 
-  if (!entries.length) {
-    el.innerHTML = '<div class="empty"><div class="empty-icon">📝</div>まだ登録されていません</div>';
+  if (!getMember()) {
+    el.innerHTML = '<div class="empty"><div class="empty-icon">👤</div>メンバー名を設定してください</div>';
+    cnt.textContent = '';
+    listSection.classList.add('hidden');
+    renderReviewSection();
+    updateScrollFabVisibility();
+    return;
+  }
+
+  const memberEntries = getMemberFilteredEntries();
+  if (!memberEntries.length) {
+    const msg = entries.length
+      ? 'この名前のカードがありません。スプレッドシートの member 列と名前が一致しているか確認してください。'
+      : 'まだ登録されていません';
+    el.innerHTML = `<div class="empty"><div class="empty-icon">📝</div>${escHtml(msg)}</div>`;
     cnt.textContent = '';
     listSection.classList.add('hidden');
     renderReviewSection();
@@ -1374,7 +1560,7 @@ function render() {
   updateFilterSummary();
 
   const visible = getFilteredEntries();
-  const total = entries.length;
+  const total = memberEntries.length;
   cnt.textContent = visible.length === total
     ? `${total}件`
     : `${visible.length} / ${total}件`;
@@ -1619,6 +1805,7 @@ window.addEventListener('scroll', updateScrollTopVisibility, { passive: true });
 window.addEventListener('resize', updateScrollTopVisibility, { passive: true });
 
 document.getElementById('sort-select').value = sortMode;
+syncMemberSectionVisibility();
 syncApiSectionVisibility();
 checkGasHealth();
 loadEntries();

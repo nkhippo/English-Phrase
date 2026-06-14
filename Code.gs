@@ -22,6 +22,7 @@ function doGet(e) {
   const action = e.parameter.action;
   if (action === 'getAll') return handleGetAll();
   if (action === 'health') return handleHealth();
+  if (action === 'checkMember') return handleCheckMember(e.parameter.member);
   if (action === 'getAudio') return handleGetAudio(e.parameter.id, Number(e.parameter.idx || 0));
   return jsonResponse({ error: 'unknown action' });
 }
@@ -29,7 +30,7 @@ function doGet(e) {
 function doPost(e) {
   const data = JSON.parse(e.postData.contents);
   if (data.action === 'save') return handleSave(data.entry);
-  if (data.action === 'generateAndSave') return handleGenerateAndSave(data.input, data.note, data.apiKey);
+  if (data.action === 'generateAndSave') return handleGenerateAndSave(data.input, data.note, data.apiKey, data.member);
   if (data.action === 'confirmCard') return handleConfirmCard(data.id, data.confirmedAt);
   if (data.action === 'deleteEntry') return handleDeleteEntry(data.id);
   if (data.action === 'generateEntryAudio') return handleGenerateEntryAudio(data.id);
@@ -54,6 +55,7 @@ function handleGetAll() {
     pos:          normalizePos(r[7]),
     confirmedAt:  parseConfirmedAt(r[8]),
     audioUrls:    parseAudioUrls(r[9]),
+    member:       normalizeMember(r[10]),
     idx:          0,
     show:         false
   })).reverse();
@@ -70,29 +72,131 @@ function toLowerEntryText(s) {
   return String(s || '').toLowerCase();
 }
 
-function handleGenerateAndSave(input, note, apiKey) {
+function normalizeMember(s) {
+  return String(s || '').trim().toLowerCase();
+}
+
+function memberExistsInSheet(normalizedMember) {
+  if (!normalizedMember) return false;
+  const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_NAME);
+  const rows = sheet.getDataRange().getValues();
+  for (let i = 1; i < rows.length; i++) {
+    if (normalizeMember(rows[i][10]) === normalizedMember) return true;
+  }
+  return false;
+}
+
+function handleCheckMember(member) {
+  const normalized = normalizeMember(member);
+  if (!normalized) return jsonResponse({ error: 'member required' });
+  return jsonResponse({ exists: memberExistsInSheet(normalized) });
+}
+
+function parseExamples(cell) {
+  if (!cell || cell === '') return [];
+  try { return JSON.parse(cell); } catch (e) { return []; }
+}
+
+function entryTextMatchesQuery(rowInput, rowKeyword, normalizedQuery) {
+  if (!normalizedQuery) return false;
+  return toLowerEntryText(rowInput) === normalizedQuery ||
+    toLowerEntryText(rowKeyword) === normalizedQuery;
+}
+
+function reusableDataFromRow(row) {
+  return {
+    input: row[1],
+    keyword: toLowerEntryText(row[2]),
+    examples: parseExamples(row[3]),
+    ipa: row[6] || '',
+    pos: normalizePos(row[7]),
+    audioUrls: parseAudioUrls(row[9])
+  };
+}
+
+function findReusableEntryFromOtherMember(normalizedQuery, currentMember) {
+  const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_NAME);
+  const rows = sheet.getDataRange().getValues();
+  let best = null;
+  let bestAudioCount = -1;
+
+  for (let i = 1; i < rows.length; i++) {
+    if (!entryTextMatchesQuery(rows[i][1], rows[i][2], normalizedQuery)) continue;
+    const rowMember = normalizeMember(rows[i][10]);
+    if (rowMember === currentMember) continue;
+
+    const candidate = reusableDataFromRow(rows[i]);
+    const audioCount = Object.keys(candidate.audioUrls || {}).length;
+    if (audioCount > bestAudioCount) {
+      best = candidate;
+      bestAudioCount = audioCount;
+    }
+  }
+  return best;
+}
+
+function memberAlreadyHasEntry(normalizedQuery, currentMember) {
+  const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_NAME);
+  const rows = sheet.getDataRange().getValues();
+
+  for (let i = 1; i < rows.length; i++) {
+    if (!entryTextMatchesQuery(rows[i][1], rows[i][2], normalizedQuery)) continue;
+    if (normalizeMember(rows[i][10]) === currentMember) return true;
+  }
+  return false;
+}
+
+function handleGenerateAndSave(input, note, apiKey, member) {
   try {
+    const normalizedMember = normalizeMember(member);
+    if (!normalizedMember) throw new Error('メンバー名が未設定です。');
     const normalizedInput = toLowerEntryText(input);
-    const generated = generateExamples(normalizedInput, note || '', apiKey);
-    const parsed = generated.parsed;
-    const keyword = toLowerEntryText(parsed.keyword);
-    const ipa = ensureIpa(keyword, apiKey, parsed, generated.raw);
+    if (!normalizedInput) throw new Error('登録したい内容を入力してください。');
+
+    if (memberAlreadyHasEntry(normalizedInput, normalizedMember)) {
+      throw new Error('この単語はすでに登録されています。');
+    }
+
+    const reused = findReusableEntryFromOtherMember(normalizedInput, normalizedMember);
     const entryId = Date.now();
-    const entry = {
-      id: entryId,
-      input: normalizedInput,
-      note: note || '',
-      keyword: keyword,
-      ipa: ipa,
-      pos: normalizePos(parsed.partOfSpeech || parsed.pos || parsed.part_of_speech),
-      examples: parsed.examples,
-      date: Utilities.formatDate(new Date(), Session.getScriptTimeZone() || 'Asia/Tokyo', 'M/d'),
-      confirmedAt: '',
-      audioUrls: {}
-    };
+    let entry;
+
+    if (reused) {
+      entry = {
+        id: entryId,
+        input: reused.input,
+        note: note || '',
+        keyword: reused.keyword,
+        ipa: reused.ipa,
+        pos: reused.pos,
+        examples: reused.examples,
+        date: Utilities.formatDate(new Date(), Session.getScriptTimeZone() || 'Asia/Tokyo', 'M/d'),
+        confirmedAt: '',
+        audioUrls: reused.audioUrls || {},
+        member: normalizedMember
+      };
+    } else {
+      const generated = generateExamples(normalizedInput, note || '', apiKey);
+      const parsed = generated.parsed;
+      const keyword = toLowerEntryText(parsed.keyword);
+      const ipa = ensureIpa(keyword, apiKey, parsed, generated.raw);
+      entry = {
+        id: entryId,
+        input: normalizedInput,
+        note: note || '',
+        keyword: keyword,
+        ipa: ipa,
+        pos: normalizePos(parsed.partOfSpeech || parsed.pos || parsed.part_of_speech),
+        examples: parsed.examples,
+        date: Utilities.formatDate(new Date(), Session.getScriptTimeZone() || 'Asia/Tokyo', 'M/d'),
+        confirmedAt: '',
+        audioUrls: {},
+        member: normalizedMember
+      };
+    }
 
     appendEntry(entry);
-    return jsonResponse({ ok: true, entry: entry });
+    return jsonResponse({ ok: true, entry: entry, reused: !!reused });
   } catch (err) {
     return jsonResponse({ error: err.message || String(err) });
   }
@@ -124,7 +228,8 @@ function appendEntry(entry) {
     entry.ipa || '',
     entry.pos || '',
     entry.confirmedAt || '',
-    JSON.stringify(entry.audioUrls || {})
+    JSON.stringify(entry.audioUrls || {}),
+    entry.member || ''
   ]);
 }
 
