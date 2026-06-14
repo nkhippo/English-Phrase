@@ -21,6 +21,7 @@
     --audio-bar-height: 40px;
     --audio-bar-side-inset: max(20px, env(safe-area-inset-left, 0px), env(safe-area-inset-right, 0px));
     --audio-bar-bottom-gap: 12px;
+    --scroll-fab-bottom-offset: calc(var(--audio-bar-height) + var(--audio-bar-bottom-gap) + 12px + env(safe-area-inset-bottom, 0px));
   }
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body {
@@ -362,7 +363,7 @@
   .scroll-fab:active { transform: scale(0.96); }
   .scroll-fab.hidden { display: none; }
   .scroll-fab-top { top: 12px; }
-  .scroll-fab-bottom { bottom: 16px; }
+  .scroll-fab-bottom { bottom: var(--scroll-fab-bottom-offset); }
   /* PC: カード列（max 500px）の右横に配置 */
   @media (min-width: 560px) {
     .scroll-fab {
@@ -607,9 +608,6 @@
   .audio-progress-close:hover { background: var(--accent-light); color: var(--accent-text); }
   body.audio-progress-visible {
     padding-bottom: calc(var(--audio-bar-height) + var(--audio-bar-bottom-gap) + 8px + env(safe-area-inset-bottom, 0px));
-  }
-  body.audio-progress-visible .scroll-fab-bottom {
-    bottom: calc(var(--audio-bar-height) + var(--audio-bar-bottom-gap) + 12px + env(safe-area-inset-bottom, 0px));
   }
 </style>
 </head>
