@@ -135,16 +135,22 @@ function findReusableEntryFromOtherMember(normalizedQuery, currentMember) {
   return best;
 }
 
-function memberHasInputAndKeyword(normalizedInput, normalizedKeyword, currentMember) {
+function memberAlreadyHasEntry(normalizedQuery, currentMember) {
   const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_NAME);
   const rows = sheet.getDataRange().getValues();
 
   for (let i = 1; i < rows.length; i++) {
     if (normalizeMember(rows[i][10]) !== currentMember) continue;
-    if (toLowerEntryText(rows[i][1]) !== normalizedInput) continue;
-    if (toLowerEntryText(rows[i][2]) !== normalizedKeyword) continue;
-    return true;
+    if (entryTextMatchesQuery(rows[i][1], rows[i][2], normalizedQuery)) return true;
   }
+  return false;
+}
+
+function memberAlreadyHasMatchingEntry(normalizedInput, normalizedKeyword, currentMember) {
+  if (memberAlreadyHasEntry(normalizedInput, currentMember)) return true;
+  const ni = toLowerEntryText(normalizedInput);
+  const nk = toLowerEntryText(normalizedKeyword);
+  if (nk && nk !== ni) return memberAlreadyHasEntry(nk, currentMember);
   return false;
 }
 
@@ -154,6 +160,10 @@ function handleGenerateAndSave(input, note, apiKey, member) {
     if (!normalizedMember) throw new Error('メンバー名が未設定です。');
     const normalizedInput = toLowerEntryText(input);
     if (!normalizedInput) throw new Error('登録したい内容を入力してください。');
+
+    if (memberAlreadyHasEntry(normalizedInput, normalizedMember)) {
+      throw new Error('登録済みです');
+    }
 
     const reused = findReusableEntryFromOtherMember(normalizedInput, normalizedMember);
     const entryId = Date.now();
@@ -195,7 +205,7 @@ function handleGenerateAndSave(input, note, apiKey, member) {
 
     const entryInput = toLowerEntryText(entry.input);
     const entryKeyword = toLowerEntryText(entry.keyword);
-    if (memberHasInputAndKeyword(entryInput, entryKeyword, normalizedMember)) {
+    if (memberAlreadyHasMatchingEntry(entryInput, entryKeyword, normalizedMember)) {
       throw new Error('登録済みです');
     }
 
