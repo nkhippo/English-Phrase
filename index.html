@@ -618,6 +618,7 @@
     transform: translate(-50%, -50%);
     pointer-events: none;
   }
+  .audio-progress-repeat,
   .audio-progress-close {
     flex-shrink: 0;
     width: 22px;
@@ -627,12 +628,22 @@
     border-radius: 6px;
     background: var(--bg);
     color: var(--muted);
-    font-size: 14px;
     line-height: 1;
     cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
     transition: background 0.12s, color 0.12s;
   }
+  .audio-progress-repeat svg {
+    width: 14px;
+    height: 14px;
+    flex-shrink: 0;
+    pointer-events: none;
+  }
+  .audio-progress-repeat:hover,
   .audio-progress-close:hover { background: var(--accent-light); color: var(--accent-text); }
+  .audio-progress-close { font-size: 14px; }
   body.audio-progress-visible {
     padding-bottom: calc(var(--audio-bar-height) + var(--audio-bar-bottom-gap) + 8px + env(safe-area-inset-bottom, 0px));
   }
@@ -749,6 +760,14 @@
 </div>
 
 <div class="audio-progress-bar hidden" id="audio-progress-bar" aria-label="Audio playback position">
+  <button type="button" class="audio-progress-repeat" onclick="repeatAudioProgress(event)" aria-label="Repeat">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <polyline points="17 1 21 5 17 9"></polyline>
+      <path d="M3 11V9a4 4 0 0 1 4-4h14"></path>
+      <polyline points="7 23 3 19 7 15"></polyline>
+      <path d="M21 13v2a4 4 0 0 1-4 4H3"></path>
+    </svg>
+  </button>
   <div class="audio-progress-track" id="audio-progress-track">
     <div class="audio-progress-rail">
       <div class="audio-progress-fill" id="audio-progress-fill"></div>
@@ -1899,6 +1918,20 @@ function closeAudioProgressBar(ev) {
   if (ev) ev.stopPropagation();
   audioProgressDismissed = true;
   hideAudioProgressBar();
+}
+
+function repeatAudioProgress(ev) {
+  if (ev) ev.stopPropagation();
+  if (!activeAudioKey) return;
+
+  const url = getCachedAudioUrl(activeAudioKey) || (currentAudio && currentAudio.src);
+  if (!url) return;
+
+  audioScrubState.active = false;
+  audioScrubState.pointerId = null;
+  audioProgressDismissed = false;
+  pendingProgressRevealKey = null;
+  playAudioWithProgress(url, activeAudioKey, { showProgress: true });
 }
 
 function startAudioProgressLoop(audio) {
