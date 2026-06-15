@@ -1,9 +1,9 @@
 <!DOCTYPE html>
-<html lang="ja">
+<html lang="en">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-<title>Phrase — 英語フレーズ記録</title>
+<title>Phrase — English Phrase Tracker</title>
 <link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
 <style>
   :root {
@@ -644,86 +644,86 @@
     <div class="header-row">
       <h1>Phrase</h1>
       <div class="header-links">
-        <button type="button" class="api-key-link hidden" id="member-toggle" onclick="showMemberSection()">名前を変更</button>
-        <button type="button" class="api-key-link hidden" id="api-key-toggle" onclick="showApiSection()">APIキーを変更</button>
+        <button type="button" class="api-key-link hidden" id="member-toggle" onclick="showMemberSection()">Change name</button>
+        <button type="button" class="api-key-link hidden" id="api-key-toggle" onclick="showApiSection()">Change API key</button>
       </div>
     </div>
   </header>
 
   <div class="input-section settings-section" id="member-section">
-    <div class="input-label">メンバー名</div>
+    <div class="input-label">Member name</div>
     <p class="settings-hint">
-      あなた専用のカードを表示・保存するための名前です。スプレッドシートの member 列と同じ名前を<strong>半角英小文字</strong>で入力してください（例：naoya）。この端末のブラウザにのみ保存されます。
+      Your name for viewing and saving your own cards. Enter the same value as the <strong>member</strong> column in the spreadsheet, in lowercase ASCII (e.g. naoya). Stored only in this browser on this device.
     </p>
-    <input type="text" id="member-name" class="api-input" placeholder="例：naoya" autocomplete="off" autocapitalize="off" spellcheck="false" maxlength="32" oninput="onMemberNameInput()">
-    <button type="button" class="secondary-btn" id="member-save-btn" onclick="saveMember()">名前を保存</button>
+    <input type="text" id="member-name" class="api-input" placeholder="e.g. naoya" autocomplete="off" autocapitalize="off" spellcheck="false" maxlength="32" oninput="onMemberNameInput()">
+    <button type="button" class="secondary-btn" id="member-save-btn" onclick="saveMember()">Save name</button>
     <div class="status member-status" id="member-st"></div>
   </div>
 
   <div class="gas-banner hidden" id="gas-banner">
-    <strong>GAS の外部接続権限が未設定です</strong>
-    例文生成には Apps Script の承認が必要です（APIキーとは別設定です）。
+    <strong>GAS external access is not authorized</strong>
+    Example generation requires Apps Script authorization (separate from the API key).
     <ol>
-      <li>EnglishPhrase スプレッドシートを開く</li>
-      <li>拡張機能 → Apps Script → 関数 <code>authorizeExternalRequest</code> を実行</li>
-      <li>表示された「権限を確認」→ 自分の Google アカウントで<strong>許可</strong></li>
-      <li>デプロイ → デプロイを管理 → 新バージョン（<strong>実行者: 自分</strong> / アクセス: 全員）</li>
+      <li>Open the EnglishPhrase spreadsheet</li>
+      <li>Extensions → Apps Script → run <code>authorizeExternalRequest</code></li>
+      <li>Click <strong>Review permissions</strong> and allow with your Google account</li>
+      <li>Deploy → Manage deployments → New version (<strong>Execute as: Me</strong> / Access: Anyone)</li>
     </ol>
   </div>
 
   <div class="input-section settings-section" id="api-section">
-    <div class="input-label">APIキー設定</div>
+    <div class="input-label">API key settings</div>
     <p class="settings-hint">
-      例文生成に Anthropic の API キーを使います。キーはこの端末のブラウザ（localStorage）にのみ保存され、保存のたびに GAS 経由で送信されます。
-      <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener">キーを取得する →</a>
+      Example generation uses an Anthropic API key. The key is stored only in this browser (localStorage) and sent via GAS each time you save.
+      <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener">Get a key →</a>
     </p>
     <input type="password" id="api-key" class="api-input" placeholder="sk-ant-..." autocomplete="off">
-    <button type="button" class="secondary-btn" onclick="saveApiKey()">キーを保存</button>
+    <button type="button" class="secondary-btn" onclick="saveApiKey()">Save key</button>
     <div class="status api-status" id="api-st"></div>
   </div>
 
   <div class="input-section">
     <div class="input-group">
-      <div class="input-label">登録したい内容</div>
-      <input type="text" id="inp" class="text-input" placeholder="例：flustered / put up with / これは何ですか？">
+      <div class="input-label">What to add</div>
+      <input type="text" id="inp" class="text-input" placeholder="e.g. flustered / put up with / What is this?">
     </div>
     <div class="input-group">
-      <div class="input-label">その補足（任意）</div>
-      <input type="text" id="note" class="text-input" placeholder="例：授業で先生が言っていたフレーズ">
+      <div class="input-label">Notes (optional)</div>
+      <input type="text" id="note" class="text-input" placeholder="e.g. phrase the teacher used in class">
     </div>
-    <button class="save-btn" id="btn" onclick="saveEntry()">保存する</button>
+    <button class="save-btn" id="btn" onclick="saveEntry()">Save</button>
     <div class="status" id="st"></div>
   </div>
 
   <div class="list-section hidden" id="list-section">
     <div class="section-header">
-      <div class="section-title">カード一覧</div>
+      <div class="section-title">Cards</div>
       <div class="count" id="cnt"></div>
     </div>
     <div class="filter-accordion">
       <button type="button" class="filter-accordion-toggle" id="filter-toggle" aria-expanded="false" onclick="toggleFilterPanel()">
-        <span>絞り込み・並び替え</span>
+        <span>Filter &amp; sort</span>
         <span class="filter-summary hidden" id="filter-summary"></span>
         <svg class="filter-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>
       </button>
       <div class="list-controls hidden" id="list-controls">
         <div class="control-row">
-          <span class="control-label">品詞</span>
+          <span class="control-label">Part of speech</span>
           <div class="filter-chips" id="pos-filters"></div>
         </div>
         <div class="control-row">
-          <span class="control-label">検索</span>
-          <input type="search" class="word-search-input" id="word-search" placeholder="登録ワードで絞り込み" autocomplete="off" enterkeyhint="search" oninput="onWordSearchInput()">
+          <span class="control-label">Search</span>
+          <input type="search" class="word-search-input" id="word-search" placeholder="Filter by keyword" autocomplete="off" enterkeyhint="search" oninput="onWordSearchInput()">
         </div>
         <div class="control-row">
-          <span class="control-label">並び</span>
+          <span class="control-label">Sort</span>
           <select class="sort-select" id="sort-select" onchange="onSortChange()">
-            <option value="registered-desc">登録日（新しい順）</option>
-            <option value="registered-asc">登録日（古い順）</option>
-            <option value="confirmed-desc">確認日（新しい順）</option>
-            <option value="confirmed-asc">確認日（古い順）</option>
-            <option value="confirmed-unconfirmed">確認日（未確認を上）</option>
-            <option value="review">復習優先（従来）</option>
+            <option value="registered-desc">Date added (newest)</option>
+            <option value="registered-asc">Date added (oldest)</option>
+            <option value="confirmed-desc">Last reviewed (newest)</option>
+            <option value="confirmed-asc">Last reviewed (oldest)</option>
+            <option value="confirmed-unconfirmed">Last reviewed (unreviewed first)</option>
+            <option value="review">Review priority</option>
           </select>
         </div>
       </div>
@@ -731,35 +731,35 @@
   </div>
 
   <div class="review-section hidden" id="review-section">
-    <div class="section-title">復習</div>
+    <div class="section-title">Review</div>
     <div class="review-en-row">
       <div class="review-en" id="review-en"></div>
       <div id="review-audio-action" class="review-audio-action"></div>
     </div>
     <div class="review-ja" id="review-ja"></div>
-    <input type="text" id="review-input" class="review-input" placeholder="穴埋めの語を入力" autocomplete="off" enterkeyhint="done" onkeydown="onReviewInputKeydown(event)">
-    <button type="button" class="save-btn" id="review-btn" onclick="onReviewAction()">答え合わせ</button>
+    <input type="text" id="review-input" class="review-input" placeholder="Type the missing word(s)" autocomplete="off" enterkeyhint="done" onkeydown="onReviewInputKeydown(event)">
+    <button type="button" class="save-btn" id="review-btn" onclick="onReviewAction()">Check answer</button>
     <div class="review-result hidden" id="review-result">
       <span class="review-mark" id="review-mark"></span>
       <span class="review-answer-text" id="review-answer-text"></span>
     </div>
   </div>
 
-  <div id="cards"><div class="loading-overlay"><span class="spinner"></span> 読み込み中…</div></div>
+  <div id="cards"><div class="loading-overlay"><span class="spinner"></span> Loading…</div></div>
 </div>
 
-<div class="audio-progress-bar hidden" id="audio-progress-bar" aria-label="音声の再生位置">
+<div class="audio-progress-bar hidden" id="audio-progress-bar" aria-label="Audio playback position">
   <div class="audio-progress-track" id="audio-progress-track">
     <div class="audio-progress-rail">
       <div class="audio-progress-fill" id="audio-progress-fill"></div>
       <div class="audio-progress-thumb" id="audio-progress-thumb"></div>
     </div>
   </div>
-  <button type="button" class="audio-progress-close" onclick="closeAudioProgressBar(event)" aria-label="閉じる">×</button>
+  <button type="button" class="audio-progress-close" onclick="closeAudioProgressBar(event)" aria-label="Close">×</button>
 </div>
 
-<button type="button" class="scroll-fab scroll-fab-top hidden" id="scroll-top" onclick="scrollToListTop()" aria-label="一覧の先頭へ">↑</button>
-<button type="button" class="scroll-fab scroll-fab-bottom hidden" id="scroll-bottom" onclick="scrollToListBottom()" aria-label="一覧の末尾へ">↓</button>
+<button type="button" class="scroll-fab scroll-fab-top hidden" id="scroll-top" onclick="scrollToListTop()" aria-label="Scroll to top of list">↑</button>
+<button type="button" class="scroll-fab scroll-fab-bottom hidden" id="scroll-bottom" onclick="scrollToListBottom()" aria-label="Scroll to bottom of list">↓</button>
 
 <script>
 const GAS_URL = 'https://script.google.com/macros/s/AKfycbxLO8j3ppZWWUu6-i1mF0aVOjqgeT2l7rPWA3HIkm5L-ItH5JkxuGn3VYiueeDClneT/exec';
@@ -771,12 +771,12 @@ const FILTER_STORAGE = 'phrase_pos_filter';
 const SEARCH_STORAGE = 'phrase_word_search';
 const SORT_MODE_STORAGE = 'phrase_sort_mode';
 const SORT_LABELS = {
-  'registered-desc': '登録日（新しい順）',
-  'registered-asc': '登録日（古い順）',
-  'confirmed-desc': '確認日（新しい順）',
-  'confirmed-asc': '確認日（古い順）',
-  'confirmed-unconfirmed': '確認日（未確認を上）',
-  'review': '復習優先'
+  'registered-desc': 'Date added (newest)',
+  'registered-asc': 'Date added (oldest)',
+  'confirmed-desc': 'Last reviewed (newest)',
+  'confirmed-asc': 'Last reviewed (oldest)',
+  'confirmed-unconfirmed': 'Last reviewed (unreviewed first)',
+  'review': 'Review priority'
 };
 const POS_LABELS = {
   noun: 'noun', verb: 'verb', adjective: 'adj', adverb: 'adv',
@@ -898,7 +898,7 @@ function buildBlankHtml(matchedText) {
   if (words.length === 1) return oneBlank(words[0], true);
 
   const parts = words.map((w, i) => oneBlank(w, i === 0));
-  return `<span class="review-blanks-multi" title="${words.length}語">${parts.join('')}</span>`;
+  return `<span class="review-blanks-multi" title="${words.length} words">${parts.join('')}</span>`;
 }
 
 function applyDialogueBreaksEn(html) {
@@ -1012,7 +1012,7 @@ function loadReviewQuestion() {
   document.getElementById('review-answer-text').textContent = '';
 
   const btn = document.getElementById('review-btn');
-  btn.textContent = '答え合わせ';
+  btn.textContent = 'Check answer';
   btn.disabled = false;
 
   updateReviewAudioAction();
@@ -1071,9 +1071,9 @@ function onReviewAction() {
   result.className = 'review-result ' + (correct ? 'correct' : 'incorrect');
   document.getElementById('review-mark').textContent = correct ? '○' : '×';
   document.getElementById('review-answer-text').textContent =
-    '正解: ' + (reviewState.correctTerm + reviewState.answerSuffix || entry.keyword || entry.input);
+    'Correct: ' + (reviewState.correctTerm + reviewState.answerSuffix || entry.keyword || entry.input);
 
-  document.getElementById('review-btn').textContent = '次へ';
+  document.getElementById('review-btn').textContent = 'Next';
 }
 
 function onReviewInputKeydown(ev) {
@@ -1121,7 +1121,7 @@ function updateFilterSummary() {
   if (!el) return;
   const parts = [];
   if (posFilter !== 'all') {
-    parts.push(posFilter === 'none' ? '未設定' : (POS_LABELS[posFilter] || posFilter));
+    parts.push(posFilter === 'none' ? 'Not set' : (POS_LABELS[posFilter] || posFilter));
   }
   const q = wordSearchQuery.trim();
   if (q) parts.push(`「${q}」`);
@@ -1135,9 +1135,9 @@ function normalizeMemberName(s) {
 }
 
 function validateMemberName(name) {
-  if (!name) return '名前を入力してください。';
+  if (!name) return 'Please enter a name.';
   if (!MEMBER_NAME_PATTERN.test(name)) {
-    return '半角英小文字で始まり、英小文字・数字・ハイフン・アンダースコアのみ、2〜32文字で入力してください。';
+    return 'Must start with a lowercase letter and contain only lowercase letters, digits, hyphens, and underscores (2–32 characters).';
   }
   return '';
 }
@@ -1159,7 +1159,7 @@ function onMemberNameInput() {
   if (!val) {
     if (!getMember()) {
       st.className = 'status member-status err';
-      st.textContent = '未設定 — カードを表示・保存する前に名前を登録してください';
+      st.textContent = 'Not set — register your name before viewing or saving cards.';
     } else {
       st.textContent = '';
       st.className = 'status member-status';
@@ -1211,7 +1211,7 @@ async function saveMember() {
 
   if (btn) btn.disabled = true;
   st.className = 'status member-status';
-  st.innerHTML = '<span class="spinner"></span><span>名前を確認中…</span>';
+  st.innerHTML = '<span class="spinner"></span><span>Verifying name…</span>';
 
   try {
     const res = await fetch(GAS_URL + '?action=checkMember&member=' + encodeURIComponent(val));
@@ -1222,12 +1222,12 @@ async function saveMember() {
       st.textContent = '';
       st.className = 'status member-status';
       const ok = confirm(
-        '「' + val + '」はスプレッドシートにまだ登録されていません。\n' +
-        '新規ユーザーとして始めてもよろしいですか？'
+        '"' + val + '" is not registered in the spreadsheet yet.\n' +
+        'Start as a new user?'
       );
       if (!ok) {
         st.className = 'status member-status err';
-        st.textContent = '名前を確認して、もう一度入力してください。';
+        st.textContent = 'Please verify your name and try again.';
         input.value = '';
         input.focus();
         return;
@@ -1236,7 +1236,7 @@ async function saveMember() {
 
     persistMemberName(val);
     st.className = 'status member-status';
-    st.textContent = '✓ 名前を保存しました';
+    st.textContent = '✓ Name saved';
     setTimeout(() => {
       if (getMember()) {
         st.textContent = '';
@@ -1245,7 +1245,7 @@ async function saveMember() {
     }, 2500);
   } catch (err) {
     st.className = 'status member-status err';
-    st.textContent = err.message || '名前の確認に失敗しました。もう一度お試しください。';
+    st.textContent = err.message || 'Failed to verify name. Please try again.';
   } finally {
     if (btn) btn.disabled = false;
   }
@@ -1263,7 +1263,7 @@ function syncMemberSectionVisibility() {
     st.className = 'status member-status';
   } else {
     st.className = 'status member-status err';
-    st.textContent = '未設定 — カードを表示・保存する前に名前を登録してください';
+    st.textContent = 'Not set — register your name before viewing or saving cards.';
   }
 }
 
@@ -1283,7 +1283,7 @@ function saveApiKey() {
   const val = input.value.trim();
   if (!val) {
     st.className = 'status api-status err';
-    st.textContent = 'APIキーを入力してください。';
+    st.textContent = 'Please enter an API key.';
     return;
   }
   localStorage.setItem(API_KEY_STORAGE, val);
@@ -1303,7 +1303,7 @@ function syncApiSectionVisibility() {
     st.className = 'status api-status';
   } else {
     st.className = 'status api-status err';
-    st.textContent = '未設定 — フレーズを保存する前にキーを登録してください';
+    st.textContent = 'Not set — register your API key before saving phrases.';
   }
 }
 
@@ -1314,7 +1314,7 @@ function showApiSection() {
 }
 
 function isGasAuthError(msg) {
-  return /UrlFetchApp|external_request|権限がありません/.test(msg || '');
+  return /UrlFetchApp|external_request|permission|権限がありません/i.test(msg || '');
 }
 
 function showGasAuthBanner(show) {
@@ -1372,14 +1372,14 @@ async function saveEntry() {
   const member = getMember();
   if (!member) {
     st.className = 'status err';
-    st.textContent = 'メンバー名が未設定です。上の「メンバー名」から登録してください。';
+    st.textContent = 'Member name is not set. Register it under Member name above.';
     showMemberSection();
     return;
   }
   const apiKey = getApiKey();
   btn.disabled = true;
   st.className = 'status';
-  st.innerHTML = '<span class="spinner"></span><span>保存中…</span>';
+  st.innerHTML = '<span class="spinner"></span><span>Saving…</span>';
 
   try {
     const res = await fetch(GAS_URL, {
@@ -1399,21 +1399,21 @@ async function saveEntry() {
     render();
     st.className = 'status';
     st.innerHTML = data.reused
-      ? '✓ 既存の例文を流用して保存しました'
-      : '✓ 保存しました（例文5件）';
+      ? '✓ Saved using existing examples'
+      : '✓ Saved (5 examples)';
     setTimeout(() => { st.innerHTML = ''; }, 3000);
   } catch (err) {
     console.error(err);
     st.className = 'status err';
-    if (/APIキー/.test(err.message || '')) {
+    if (/API key|APIキー/i.test(err.message || '')) {
       showApiSection();
     }
     if (isGasAuthError(err.message)) {
       showGasAuthBanner(true);
-      st.textContent = 'GAS の外部接続権限が未設定です。上の手順で Apps Script を承認してください。';
+      st.textContent = 'GAS external access is not authorized. Follow the steps above to authorize Apps Script.';
       document.getElementById('gas-banner').scrollIntoView({ behavior: 'smooth', block: 'center' });
     } else {
-      st.textContent = err.message || 'エラーが発生しました。もう一度お試しください。';
+      st.textContent = err.message || 'An error occurred. Please try again.';
     }
   }
   btn.disabled = false;
@@ -1522,10 +1522,10 @@ function renderPosFilters() {
     localStorage.setItem(FILTER_STORAGE, 'all');
   }
   const chips = [
-    { id: 'all', label: 'すべて' },
+    { id: 'all', label: 'All' },
     ...options.map(p => ({ id: p, label: POS_LABELS[p] || p })),
   ];
-  if (getMemberFilteredEntries().some(e => !e.pos)) chips.push({ id: 'none', label: '未設定' });
+  if (getMemberFilteredEntries().some(e => !e.pos)) chips.push({ id: 'none', label: 'Not set' });
   el.innerHTML = chips.map(c =>
     `<button type="button" class="chip${posFilter === c.id ? ' active' : ''}" onclick="setPosFilter('${escAttr(c.id)}')">${escHtml(c.label)}</button>`
   ).join('');
@@ -1565,8 +1565,8 @@ async function deleteEntry(ev, id) {
   ev.stopPropagation();
   const e = entries.find(x => x.id === id);
   if (!e) return;
-  const label = e.keyword || e.input || 'このカード';
-  if (!confirm(`「${label}」を削除しますか？\nスプレッドシートからも完全に削除されます。`)) return;
+  const label = e.keyword || e.input || 'this card';
+  if (!confirm(`Delete "${label}"?\nIt will be permanently removed from the spreadsheet.`)) return;
 
   try {
     const res = await fetch(GAS_URL, {
@@ -1575,7 +1575,7 @@ async function deleteEntry(ev, id) {
       body: JSON.stringify({ action: 'deleteEntry', id })
     });
     const data = await res.json();
-    if (!data.ok) throw new Error(data.error || '削除に失敗しました');
+    if (!data.ok) throw new Error(data.error || 'Delete failed');
     entries = entries.filter(x => x.id !== id);
     if (reviewState.entryId === id) {
       reviewState.entryId = null;
@@ -1584,7 +1584,7 @@ async function deleteEntry(ev, id) {
     applyListOrder();
     render();
   } catch (err) {
-    alert(err.message || '削除に失敗しました。しばらくしてからもう一度お試しください。');
+    alert(err.message || 'Delete failed. Please try again later.');
   }
 }
 
@@ -1649,7 +1649,7 @@ function render() {
   const sortSelect = document.getElementById('sort-select');
 
   if (!getMember()) {
-    el.innerHTML = '<div class="empty"><div class="empty-icon">👤</div>メンバー名を設定してください</div>';
+    el.innerHTML = '<div class="empty"><div class="empty-icon">👤</div>Set your member name</div>';
     cnt.textContent = '';
     listSection.classList.add('hidden');
     renderReviewSection();
@@ -1660,8 +1660,8 @@ function render() {
   const memberEntries = getMemberFilteredEntries();
   if (!memberEntries.length) {
     const msg = entries.length
-      ? 'この名前のカードがありません。スプレッドシートの member 列と名前が一致しているか確認してください。'
-      : 'まだ登録されていません';
+      ? 'No cards for this name. Check that it matches the member column in the spreadsheet.'
+      : 'Nothing saved yet';
     el.innerHTML = `<div class="empty"><div class="empty-icon">📝</div>${escHtml(msg)}</div>`;
     cnt.textContent = '';
     listSection.classList.add('hidden');
@@ -1680,11 +1680,11 @@ function render() {
   const visible = getFilteredEntries();
   const total = memberEntries.length;
   cnt.textContent = visible.length === total
-    ? `${total}件`
-    : `${visible.length} / ${total}件`;
+    ? `${total} cards`
+    : `${visible.length} / ${total} cards`;
 
   if (!visible.length) {
-    el.innerHTML = '<div class="empty"><div class="empty-icon">🔍</div>該当するカードがありません</div>';
+    el.innerHTML = '<div class="empty"><div class="empty-icon">🔍</div>No matching cards</div>';
     renderReviewSection();
     updateScrollFabVisibility();
     return;
@@ -1712,7 +1712,7 @@ function render() {
       </div>
       ${e.show ? `<div class="ja-text">${escHtml(ex.ja)}</div>` : ''}
       <div class="card-actions">
-        <button type="button" class="delete-btn" onclick="deleteEntry(event, ${e.id})" aria-label="削除">
+        <button type="button" class="delete-btn" onclick="deleteEntry(event, ${e.id})" aria-label="Delete">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
             <polyline points="3 6 5 6 21 6"></polyline>
             <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
@@ -1870,7 +1870,7 @@ function updateSpeakButtonStates() {
     if (audioLoadingKey === key) {
       btn.classList.add('loading');
       btn.disabled = true;
-      btn.setAttribute('aria-label', '音声を取得中');
+      btn.setAttribute('aria-label', 'Loading audio');
       return;
     }
     if (
@@ -1880,10 +1880,10 @@ function updateSpeakButtonStates() {
       !currentAudio.ended
     ) {
       btn.classList.add('playing');
-      btn.setAttribute('aria-label', '再生中');
+      btn.setAttribute('aria-label', 'Playing');
       return;
     }
-    btn.setAttribute('aria-label', '英文を読み上げ');
+    btn.setAttribute('aria-label', 'Read aloud');
   });
 }
 
@@ -1935,7 +1935,7 @@ function onCurrentAudioError() {
   console.error('Audio element error:', currentAudio && currentAudio.error);
   stopAudioProgressLoop();
   updateSpeakButtonStates();
-  alert('音声の再生に失敗しました。');
+  alert('Audio playback failed.');
 }
 
 function stopCurrentAudio() {
@@ -1989,7 +1989,7 @@ function playAudioWithProgress(url, key, options = {}) {
 
   audio.play().catch(err => {
     console.error('Audio play failed:', err);
-    alert('音声の再生に失敗しました。');
+    alert('Audio playback failed.');
     updateSpeakButtonStates();
   });
   updateSpeakButtonStates();
@@ -2028,7 +2028,7 @@ function finishAudioProgressScrub(shouldResume) {
 
   currentAudio.play().catch(err => {
     console.error('Audio play failed:', err);
-    alert('音声の再生に失敗しました。');
+    alert('Audio playback failed.');
   });
   startAudioProgressLoop(currentAudio);
   updateSpeakButtonStates();
@@ -2114,13 +2114,13 @@ function entryAudioActionHtml(entry, exampleIdx, options = {}) {
   const id = entry.id;
   const speakOnclick = options.speakOnclick || `speakSentence(event, ${id})`;
   if (isEntryAudioGenerating(id)) {
-    return `<button type="button" class="create-audio-btn loading" disabled aria-label="音声を作成中">
+    return `<button type="button" class="create-audio-btn loading" disabled aria-label="Creating audio">
       <span class="spinner"></span>
     </button>`;
   }
   if (hasEntryAudio(entry, exampleIdx)) {
     const audioKey = audioCacheKey(id, exampleIdx);
-    return `<button type="button" class="speak-btn" data-audio-key="${escHtml(audioKey)}" onclick="${speakOnclick}" aria-label="英文を読み上げ">
+    return `<button type="button" class="speak-btn" data-audio-key="${escHtml(audioKey)}" onclick="${speakOnclick}" aria-label="Read aloud">
       <span class="speak-btn-spinner spinner" aria-hidden="true"></span>
       <svg class="speak-btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
         <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon>
@@ -2129,7 +2129,7 @@ function entryAudioActionHtml(entry, exampleIdx, options = {}) {
       </svg>
     </button>`;
   }
-  return `<button type="button" class="create-audio-btn" onclick="createEntryAudio(event, ${id})" aria-label="音声を作成">音声</button>`;
+  return `<button type="button" class="create-audio-btn" onclick="createEntryAudio(event, ${id})" aria-label="Create audio">Audio</button>`;
 }
 
 function cardAudioActionHtml(e, ex) {
@@ -2157,7 +2157,7 @@ async function createEntryAudio(ev, id) {
     clearAudioCacheForEntry(sid);
   } catch (err) {
     console.error('createEntryAudio error:', err);
-    alert('音声の作成に失敗しました：' + (err.message || 'エラーが発生しました'));
+    alert('Failed to create audio: ' + (err.message || 'An error occurred'));
   } finally {
     audioGeneratingIds.delete(sid);
     render();
@@ -2189,14 +2189,14 @@ async function speakEntry(entryId, idx, btnEl) {
       const res = await fetch(GAS_URL + '?action=getAudio&id=' + entryId + '&idx=' + idx);
       const data = await res.json();
       if (data.error) throw new Error(data.error);
-      if (!data.audioBase64) throw new Error('audioBase64 が返されませんでした');
+      if (!data.audioBase64) throw new Error('audioBase64 was not returned');
 
       url = 'data:audio/mpeg;base64,' + data.audioBase64;
       audioCache = { key, url };
       saveAudioToStorage(key, data.audioBase64);
     } catch (err) {
       console.error('speakEntry error:', err);
-      alert('音声の再生に失敗しました：' + err.message);
+      alert('Audio playback failed: ' + err.message);
       audioLoadingKey = null;
       updateSpeakButtonStates();
       return;

@@ -157,12 +157,12 @@ function memberAlreadyHasMatchingEntry(normalizedInput, normalizedKeyword, curre
 function handleGenerateAndSave(input, note, apiKey, member) {
   try {
     const normalizedMember = normalizeMember(member);
-    if (!normalizedMember) throw new Error('メンバー名が未設定です。');
+    if (!normalizedMember) throw new Error('Member name is not set.');
     const normalizedInput = toLowerEntryText(input);
-    if (!normalizedInput) throw new Error('登録したい内容を入力してください。');
+    if (!normalizedInput) throw new Error('Please enter what you want to add.');
 
     if (memberAlreadyHasEntry(normalizedInput, normalizedMember)) {
-      throw new Error('登録済みです');
+      throw new Error('Already registered');
     }
 
     const reused = findReusableEntryFromOtherMember(normalizedInput, normalizedMember);
@@ -206,7 +206,7 @@ function handleGenerateAndSave(input, note, apiKey, member) {
     const entryInput = toLowerEntryText(entry.input);
     const entryKeyword = toLowerEntryText(entry.keyword);
     if (memberAlreadyHasMatchingEntry(entryInput, entryKeyword, normalizedMember)) {
-      throw new Error('登録済みです');
+      throw new Error('Already registered');
     }
 
     appendEntry(entry);
@@ -317,7 +317,7 @@ function normalizePos(pos) {
 }
 
 function generateExamples(input, note, apiKey) {
-  if (!apiKey) throw new Error('APIキーが未設定です。アプリ上部の「APIキー設定」から登録してください。');
+  if (!apiKey) throw new Error('API key is not set. Register it under API key settings at the top of the app.');
 
   const notePart = note ? `補足メモ：${note}。この補足も例文生成に活かしてください。` : '';
   const prompt =
@@ -333,7 +333,7 @@ function generateExamples(input, note, apiKey) {
   const raw = callClaude(apiKey, prompt, 1500);
   const parsed = parseGeneratedJson(raw);
   if (!parsed.examples || !parsed.examples.length) {
-    throw new Error('例文の生成に失敗しました。もう一度お試しください。');
+    throw new Error('Failed to generate examples. Please try again.');
   }
   return { parsed: parsed, raw: raw };
 }
@@ -359,7 +359,7 @@ function callClaude(apiKey, prompt, maxTokens) {
   if (status !== 200) {
     const msg = body.error?.message || `Claude API error (${status})`;
     if (/model/i.test(msg)) {
-      throw new Error('Claude のモデルが利用できません。GAS の Code.gs を最新版に更新して再デプロイしてください。');
+      throw new Error('Claude model is unavailable. Update Code.gs in GAS to the latest version and redeploy.');
     }
     throw new Error(msg);
   }
@@ -412,13 +412,13 @@ function ensureIpa(keyword, apiKey, parsed, raw) {
   ipa = extractIpaFromParsed(fallbackParsed, fallbackRaw);
   if (ipa) return ipa;
 
-  throw new Error('IPA発音記号の生成に失敗しました。もう一度お試しください。');
+  throw new Error('Failed to generate IPA. Please try again.');
 }
 
 function getAnthropicApiKey(optionalKey) {
   const key = optionalKey || PropertiesService.getScriptProperties().getProperty('ANTHROPIC_API_KEY');
   if (!key) {
-    throw new Error('ANTHROPIC_API_KEY がスクリプトプロパティに未設定です。Apps Script のプロジェクト設定から登録してください。');
+    throw new Error('ANTHROPIC_API_KEY is not set in script properties. Register it from Apps Script project settings.');
   }
   return key;
 }
@@ -556,11 +556,11 @@ function onOpen() {
     authorizeExternalRequest();
   } catch (err) {
     SpreadsheetApp.getUi().alert(
-      'Phrase: 外部 API・Google Drive を使う権限が必要です。\n\n' +
-      '1. 拡張機能 → Apps Script\n' +
-      '2. authorizeExternalRequest を実行して「許可」（Drive 含む）\n' +
-      '3. appsscript.json に drive スコープがあることを確認\n' +
-      '4. デプロイを更新（実行者: 自分 / アクセス: 全員）'
+      'Phrase: Permission is required to use external APIs and Google Drive.\n\n' +
+      '1. Extensions → Apps Script\n' +
+      '2. Run authorizeExternalRequest and click Allow (including Drive)\n' +
+      '3. Confirm drive scope is in appsscript.json\n' +
+      '4. Update deployment (Execute as: Me / Access: Anyone)'
     );
   }
 }
@@ -587,7 +587,7 @@ function buildTtsInstructions(voice) {
 
 function callOpenAiTts(text, entryId, idx) {
   const apiKey = PropertiesService.getScriptProperties().getProperty('OPENAI_API_KEY');
-  if (!apiKey) throw new Error('OPENAI_API_KEY がスクリプトプロパティに未設定です。');
+  if (!apiKey) throw new Error('OPENAI_API_KEY is not set in script properties.');
 
   const voice = pickTtsVoiceForExample(entryId, idx);
   const payload = {
