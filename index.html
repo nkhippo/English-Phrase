@@ -31,6 +31,48 @@
     min-height: 100vh;
     font-size: 15px;
     line-height: 1.6;
+    overscroll-behavior-y: contain;
+  }
+  body.ptr-pulling,
+  body.ptr-refreshing {
+    transition: transform 0.2s ease;
+  }
+  .pull-refresh {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: 200;
+    display: flex;
+    justify-content: center;
+    align-items: flex-end;
+    height: 0;
+    overflow: hidden;
+    pointer-events: none;
+    color: var(--muted);
+    font-size: 12px;
+  }
+  .pull-refresh-inner {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding-bottom: 10px;
+    opacity: 0;
+    transform: translateY(-8px);
+    transition: opacity 0.15s;
+  }
+  .pull-refresh.ready .pull-refresh-inner { opacity: 1; }
+  .pull-refresh.refreshing .pull-refresh-inner {
+    opacity: 1;
+    transform: none;
+  }
+  .pull-refresh-spinner { display: none; }
+  .pull-refresh.refreshing .pull-refresh-spinner { display: inline-block; }
+  .pull-refresh.refreshing .pull-refresh-icon { display: none; }
+  .pull-refresh-icon {
+    font-size: 16px;
+    line-height: 1;
+    transition: transform 0.1s;
   }
   .container { max-width: 500px; margin: 0 auto; padding: 1rem 1rem 4rem; }
 
@@ -666,6 +708,13 @@
 </style>
 </head>
 <body>
+<div class="pull-refresh" id="pull-refresh" aria-hidden="true">
+  <div class="pull-refresh-inner">
+    <span class="pull-refresh-spinner spinner" aria-hidden="true"></span>
+    <span class="pull-refresh-icon" aria-hidden="true">↓</span>
+    <span class="pull-refresh-label">Pull to refresh</span>
+  </div>
+</div>
 <div class="container">
   <header class="header">
     <div class="header-row">
@@ -1369,7 +1418,11 @@ async function checkGasHealth() {
 }
 
 // ── 起動時にGASから全件取得 ──
+let loadEntriesPromise = null;
+
 async function loadEntries() {
+  if (loadEntriesPromise) return loadEntriesPromise;
+  loadEntriesPromise = (async () => {
   try {
     const res = await fetch(GAS_URL + '?action=getAll');
     const data = await res.json();
@@ -1395,6 +1448,148 @@ async function loadEntries() {
     entries = [];
   }
   render();
+  })().finally(() => { loadEntriesPromise = null; });
+  return loadEntriesPromise;
+}
+
+const PTR_THRESHOLD = 72;
+const PTR_MAX = 120;
+let ptrState = {
+  startY: 0,
+  pulling: false,
+  distance: 0,
+  refreshing: false
+};
+
+function isPtrBlockedTarget(el) {
+  if (!el || !el.closest) return false;
+  return !!el.closest('input, textarea, select, .audio-progress-track, .audio-progress-bar');
+}
+
+function getScrollTop() {
+  return window.scrollY || document.documentElement.scrollTop || 0;
+}
+
+function canStartPullToRefresh() {
+  if (ptrState.refreshing || audioScrubState.active) return false;
+  return getScrollTop() <= 1;
+}
+
+function updatePullRefreshUI(distance, ready) {
+  const el = document.getElementById('pull-refresh');
+  const label = el && el.querySelector('.pull-refresh-label');
+  const icon = el && el.querySelector('.pull-refresh-icon');
+  if (!el) return;
+
+  const h = Math.max(0, distance);
+  el.style.height = h + 'px';
+  el.classList.toggle('ready', ready);
+  el.setAttribute('aria-hidden', h <= 0 ? 'true' : 'false');
+
+  if (label) label.textContent = ready ? 'Release to refresh' : 'Pull to refresh';
+  if (icon) icon.style.transform = ready ? 'rotate(180deg)' : '';
+  document.body.style.transform = h > 0 ? `translateY(${h}px)` : '';
+}
+
+function resetPullRefreshUI() {
+  const el = document.getElementById('pull-refresh');
+  if (!el) return;
+  el.classList.remove('ready', 'refreshing');
+  el.style.height = '0';
+  el.setAttribute('aria-hidden', 'true');
+  document.body.classList.remove('ptr-pulling', 'ptr-refreshing');
+  document.body.style.transform = '';
+  const label = el.querySelector('.pull-refresh-label');
+  if (label) label.textContent = 'Pull to refresh';
+  const icon = el.querySelector('.pull-refresh-icon');
+  if (icon) icon.style.transform = '';
+}
+
+async function triggerPullRefresh() {
+  if (ptrState.refreshing) return;
+  ptrState.refreshing = true;
+
+  const el = document.getElementById('pull-refresh');
+  if (el) {
+    el.classList.add('refreshing');
+    el.classList.remove('ready');
+    el.style.height = '52px';
+    const label = el.querySelector('.pull-refresh-label');
+    if (label) label.textContent = 'Refreshing…';
+  }
+  document.body.classList.add('ptr-refreshing');
+  document.body.style.transform = 'translateY(52px)';
+
+  try {
+    await loadEntries();
+  } finally {
+    ptrState.refreshing = false;
+    resetPullRefreshUI();
+    ptrState.distance = 0;
+    ptrState.pulling = false;
+    ptrState.startY = 0;
+  }
+}
+
+function onPullRefreshTouchStart(ev) {
+  if (!canStartPullToRefresh() || isPtrBlockedTarget(ev.target)) return;
+  ptrState.startY = ev.touches[0].clientY;
+  ptrState.pulling = false;
+}
+
+function onPullRefreshTouchMove(ev) {
+  if (ptrState.refreshing) return;
+  if (!ptrState.startY) return;
+
+  const y = ev.touches[0].clientY;
+  const delta = y - ptrState.startY;
+  if (delta <= 0) {
+    if (ptrState.pulling) {
+      ptrState.pulling = false;
+      ptrState.distance = 0;
+      resetPullRefreshUI();
+    }
+    return;
+  }
+
+  if (!ptrState.pulling && !canStartPullToRefresh()) {
+    ptrState.startY = 0;
+    return;
+  }
+
+  ptrState.pulling = true;
+  ptrState.distance = Math.min(delta * 0.5, PTR_MAX);
+  document.body.classList.add('ptr-pulling');
+  updatePullRefreshUI(ptrState.distance, ptrState.distance >= PTR_THRESHOLD);
+  ev.preventDefault();
+}
+
+function onPullRefreshTouchEnd() {
+  if (ptrState.refreshing) return;
+
+  if (!ptrState.pulling) {
+    ptrState.startY = 0;
+    return;
+  }
+
+  const shouldRefresh = ptrState.distance >= PTR_THRESHOLD;
+  ptrState.startY = 0;
+  ptrState.pulling = false;
+
+  if (shouldRefresh) {
+    triggerPullRefresh();
+    return;
+  }
+
+  ptrState.distance = 0;
+  resetPullRefreshUI();
+}
+
+function initPullToRefresh() {
+  document.addEventListener('touchstart', onPullRefreshTouchStart, { passive: true });
+  document.addEventListener('touchmove', onPullRefreshTouchMove, { passive: false });
+  document.addEventListener('touchend', onPullRefreshTouchEnd, { passive: true });
+  document.addEventListener('touchcancel', onPullRefreshTouchEnd, { passive: true });
 }
 
 // ── 保存 ──
@@ -2334,6 +2529,7 @@ syncViewportFixedLayer();
 document.getElementById('sort-select').value = sortMode;
 initAudioProgressReadyKeys();
 initAudioProgressScrub();
+initPullToRefresh();
 syncMemberSectionVisibility();
 syncApiSectionVisibility();
 checkGasHealth();
