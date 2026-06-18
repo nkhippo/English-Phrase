@@ -800,12 +800,10 @@
         <div class="control-row">
           <span class="control-label">Sort</span>
           <select class="sort-select" id="sort-select" onchange="onSortChange()">
+            <option value="correct-asc">Correct count (lowest first)</option>
+            <option value="correct-desc">Correct count (highest first)</option>
             <option value="registered-desc">Date added (newest)</option>
             <option value="registered-asc">Date added (oldest)</option>
-            <option value="confirmed-desc">Last reviewed (newest)</option>
-            <option value="confirmed-asc">Last reviewed (oldest)</option>
-            <option value="confirmed-unconfirmed">Last reviewed (unreviewed first)</option>
-            <option value="review">Review priority</option>
           </select>
         </div>
       </div>
@@ -854,21 +852,19 @@
 </div>
 
 <script>
-const GAS_URL = 'https://script.google.com/macros/s/AKfycbz_M60Iynb3MwOJXo6s6vJFM31E-ZHMwTR1-nzMo9dFVyj64boISDOKIXsOqMW2y7qO/exec';
+const GAS_URL = 'https://script.google.com/macros/s/AKfycbwyJJOmaEPk8Xma5TZIvWQOMOMEQOJUNEg0gDoYbHOO4XZYJ_h9MNPty7btqCwMU6pU/exec';
 const MEMBER_STORAGE = 'phrase_member_name';
 const MEMBER_NAME_PATTERN = /^[a-z][a-z0-9_-]{1,31}$/;
 const API_KEY_STORAGE = 'phrase_anthropic_api_key';
-const SORT_STORAGE = 'phrase_card_sort_times';
 const FILTER_STORAGE = 'phrase_pos_filter';
 const SEARCH_STORAGE = 'phrase_word_search';
 const SORT_MODE_STORAGE = 'phrase_sort_mode';
+const VALID_SORT_MODES = ['correct-asc', 'correct-desc', 'registered-desc', 'registered-asc'];
 const SORT_LABELS = {
+  'correct-asc': 'Correct count (lowest first)',
+  'correct-desc': 'Correct count (highest first)',
   'registered-desc': 'Date added (newest)',
-  'registered-asc': 'Date added (oldest)',
-  'confirmed-desc': 'Last reviewed (newest)',
-  'confirmed-asc': 'Last reviewed (oldest)',
-  'confirmed-unconfirmed': 'Last reviewed (unreviewed first)',
-  'review': 'Review priority'
+  'registered-asc': 'Date added (oldest)'
 };
 const POS_LABELS = {
   noun: 'noun', verb: 'verb', adjective: 'adj', adverb: 'adv',
@@ -878,7 +874,8 @@ const POS_LABELS = {
 let entries = [];
 let posFilter = localStorage.getItem(FILTER_STORAGE) || 'all';
 let wordSearchQuery = localStorage.getItem(SEARCH_STORAGE) || '';
-let sortMode = localStorage.getItem(SORT_MODE_STORAGE) || 'registered-desc';
+let sortMode = localStorage.getItem(SORT_MODE_STORAGE) || 'correct-asc';
+if (!VALID_SORT_MODES.includes(sortMode)) sortMode = 'correct-asc';
 
 let reviewState = {
   entryId: null,
@@ -1053,13 +1050,11 @@ function pickWeightedReviewQuestion(prevId, prevIdx) {
   return list[list.length - 1];
 }
 
-function confirmEntryReview(id) {
+function recordCorrectAnswer(id) {
   const e = entries.find(x => x.id === id);
   if (!e) return;
-  const now = Date.now();
-  e.confirmedAt = now;
-  setCardSortTime(id, now);
-  persistConfirmedAt(id, now);
+  e.correctCount = getCorrectCount(e) + 1;
+  persistCorrectCount(id);
   applyListOrder();
   render();
 }
@@ -1153,7 +1148,7 @@ function onReviewAction() {
   reviewState.checked = true;
   reviewState.isCorrect = correct;
 
-  if (correct) confirmEntryReview(entry.id);
+  if (correct) recordCorrectAnswer(entry.id);
 
   input.disabled = true;
   input.classList.toggle('correct', correct);
@@ -1217,7 +1212,7 @@ function updateFilterSummary() {
   }
   const q = wordSearchQuery.trim();
   if (q) parts.push(`「${q}」`);
-  if (sortMode !== 'registered-desc') parts.push(SORT_LABELS[sortMode] || sortMode);
+  if (sortMode !== 'correct-asc') parts.push(SORT_LABELS[sortMode] || sortMode);
   el.textContent = parts.join(' · ');
   el.classList.toggle('hidden', !parts.length);
 }
@@ -1433,20 +1428,15 @@ async function loadEntries() {
     const res = await fetch(GAS_URL + '?action=getAll');
     const data = await res.json();
     entries = (data.entries || []).map(e => {
-      const entry = {
+      return {
         ...e,
         member: normalizeMemberName(e.member || ''),
         pos: e.pos || '',
-        confirmedAt: e.confirmedAt || '',
+        correctCount: Number(e.correctCount) || 0,
         idx: 0,
         show: false,
         audioUrls: e.audioUrls || {}
       };
-      if (!entry.confirmedAt) {
-        const legacy = getCardSortTime(entry.id);
-        if (legacy > 0) entry.confirmedAt = legacy;
-      }
-      return entry;
     });
     applyListOrder();
   } catch (e) {
@@ -1629,8 +1619,7 @@ async function saveEntry() {
     if (data.error) throw new Error(data.error);
 
     const entry = data.entry;
-    entries.push({ ...entry, member: entry.member || member, pos: entry.pos || '', confirmedAt: '', idx: 0, show: false, audioUrls: entry.audioUrls || {} });
-    setCardSortTime(entry.id, -Date.now());
+    entries.push({ ...entry, member: entry.member || member, pos: entry.pos || '', correctCount: entry.correctCount || 0, idx: 0, show: false, audioUrls: entry.audioUrls || {} });
     applyListOrder();
     inp.value = '';
     noteEl.value = '';
@@ -1657,29 +1646,9 @@ async function saveEntry() {
   btn.disabled = false;
 }
 
-function getSortTimes() {
-  try {
-    return JSON.parse(localStorage.getItem(SORT_STORAGE) || '{}');
-  } catch {
-    return {};
-  }
-}
-
-function getCardSortTime(id) {
-  const t = getSortTimes()[String(id)];
-  return t == null ? 0 : t;
-}
-
-function setCardSortTime(id, time) {
-  const map = getSortTimes();
-  map[String(id)] = time;
-  localStorage.setItem(SORT_STORAGE, JSON.stringify(map));
-}
-
-function getConfirmedTime(e) {
-  if (e.confirmedAt) return Number(e.confirmedAt);
-  const legacy = getCardSortTime(e.id);
-  return legacy > 0 ? legacy : null;
+function getCorrectCount(e) {
+  const n = Number(e.correctCount);
+  return isNaN(n) || n < 0 ? 0 : n;
 }
 
 function getRegistrationTime(e) {
@@ -1687,34 +1656,19 @@ function getRegistrationTime(e) {
   return isNaN(id) ? 0 : id;
 }
 
-/** 復習優先: ソート時刻が古いほど上。未設定(0)は新規カード用で最上位 */
-function sortByReview() {
-  entries.sort((a, b) => getCardSortTime(a.id) - getCardSortTime(b.id));
-}
-
 function applyListOrder() {
   const mode = sortMode;
-  if (mode === 'review') {
-    sortByReview();
-    return;
-  }
   entries.sort((a, b) => {
     if (mode === 'registered-desc') return getRegistrationTime(b) - getRegistrationTime(a);
     if (mode === 'registered-asc') return getRegistrationTime(a) - getRegistrationTime(b);
-    const ca = getConfirmedTime(a);
-    const cb = getConfirmedTime(b);
-    if (mode === 'confirmed-unconfirmed') {
-      if (ca == null && cb == null) return getRegistrationTime(b) - getRegistrationTime(a);
-      if (ca == null) return -1;
-      if (cb == null) return 1;
-      return ca - cb;
+    if (mode === 'correct-desc') {
+      const diff = getCorrectCount(b) - getCorrectCount(a);
+      if (diff) return diff;
+      return getRegistrationTime(b) - getRegistrationTime(a);
     }
-    if (ca == null && cb == null) return getRegistrationTime(b) - getRegistrationTime(a);
-    if (ca == null) return 1;
-    if (cb == null) return -1;
-    if (mode === 'confirmed-desc') return cb - ca;
-    if (mode === 'confirmed-asc') return ca - cb;
-    return 0;
+    const diff = getCorrectCount(a) - getCorrectCount(b);
+    if (diff) return diff;
+    return getRegistrationTime(b) - getRegistrationTime(a);
   });
 }
 
@@ -1787,15 +1741,15 @@ function onSortChange() {
   render();
 }
 
-async function persistConfirmedAt(id, confirmedAt) {
+async function persistCorrectCount(id) {
   try {
     await fetch(GAS_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-      body: JSON.stringify({ action: 'confirmCard', id, confirmedAt })
+      body: JSON.stringify({ action: 'incrementCorrectCount', id })
     });
   } catch (e) {
-    console.warn('confirmCard failed:', e);
+    console.warn('incrementCorrectCount failed:', e);
   }
 }
 
@@ -1843,11 +1797,6 @@ function tapCard(id) {
   } else {
     e.show = false;
     e.idx = (e.idx + 1) % e.examples.length;
-    const now = Date.now();
-    e.confirmedAt = now;
-    setCardSortTime(id, now);
-    persistConfirmedAt(id, now);
-    applyListOrder();
   }
   render();
 }

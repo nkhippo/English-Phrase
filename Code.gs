@@ -1,4 +1,6 @@
 const SHEET_NAME = 'english-phrase';
+/** 0-based column index: L = 正答数 (Review で正解した回数) */
+const CORRECT_COUNT_IDX = 11;
 const CLAUDE_MODEL = 'claude-sonnet-4-6';
 const DRIVE_FOLDER_NAME = 'EnglishPhrase_Audio';
 const EXAMPLES_PER_ENTRY = 5;
@@ -31,7 +33,7 @@ function doPost(e) {
   const data = JSON.parse(e.postData.contents);
   if (data.action === 'save') return handleSave(data.entry);
   if (data.action === 'generateAndSave') return handleGenerateAndSave(data.input, data.note, data.apiKey, data.member);
-  if (data.action === 'confirmCard') return handleConfirmCard(data.id, data.confirmedAt);
+  if (data.action === 'incrementCorrectCount') return handleIncrementCorrectCount(data.id);
   if (data.action === 'deleteEntry') return handleDeleteEntry(data.id);
   if (data.action === 'generateEntryAudio') return handleGenerateEntryAudio(data.id);
   if (data.action === 'generateAudioBatch') return handleGenerateAudioBatch();
@@ -53,7 +55,7 @@ function handleGetAll() {
     note:         r[5] || '',
     ipa:          r[6] || '',
     pos:          normalizePos(r[7]),
-    confirmedAt:  parseConfirmedAt(r[8]),
+    correctCount: parseCorrectCount(r[CORRECT_COUNT_IDX]),
     audioUrls:    parseAudioUrls(r[9]),
     member:       normalizeMember(r[10]),
     idx:          0,
@@ -179,7 +181,7 @@ function handleGenerateAndSave(input, note, apiKey, member) {
         pos: reused.pos,
         examples: reused.examples,
         date: Utilities.formatDate(new Date(), Session.getScriptTimeZone() || 'Asia/Tokyo', 'M/d'),
-        confirmedAt: '',
+        correctCount: 0,
         audioUrls: reused.audioUrls || {},
         member: normalizedMember
       };
@@ -197,7 +199,7 @@ function handleGenerateAndSave(input, note, apiKey, member) {
         pos: normalizePos(parsed.partOfSpeech || parsed.pos || parsed.part_of_speech),
         examples: parsed.examples,
         date: Utilities.formatDate(new Date(), Session.getScriptTimeZone() || 'Asia/Tokyo', 'M/d'),
-        confirmedAt: '',
+        correctCount: 0,
         audioUrls: {},
         member: normalizedMember
       };
@@ -241,29 +243,24 @@ function appendEntry(entry) {
     entry.note || '',
     entry.ipa || '',
     entry.pos || '',
-    entry.confirmedAt || '',
+    '',  // I: legacy confirmedAt (unused)
     JSON.stringify(entry.audioUrls || {}),
-    entry.member || ''
+    entry.member || '',
+    entry.correctCount != null ? entry.correctCount : 0
   ]);
 }
 
-function handleConfirmCard(id, confirmedAt) {
+function handleIncrementCorrectCount(id) {
   if (id == null || id === '') return jsonResponse({ error: 'id required' });
-  const ok = updateConfirmedAt(id, confirmedAt != null ? confirmedAt : Date.now());
-  if (!ok) return jsonResponse({ error: 'entry not found' });
-  return jsonResponse({ ok: true });
-}
-
-function updateConfirmedAt(id, confirmedAt) {
   const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_NAME);
   const rows = sheet.getDataRange().getValues();
   for (let i = 1; i < rows.length; i++) {
-    if (String(rows[i][0]) === String(id)) {
-      sheet.getRange(i + 1, 9).setValue(Number(confirmedAt) || Date.now());
-      return true;
-    }
+    if (String(rows[i][0]) !== String(id)) continue;
+    const next = parseCorrectCount(rows[i][CORRECT_COUNT_IDX]) + 1;
+    sheet.getRange(i + 1, CORRECT_COUNT_IDX + 1).setValue(next);
+    return jsonResponse({ ok: true, correctCount: next });
   }
-  return false;
+  return jsonResponse({ error: 'entry not found' });
 }
 
 function handleDeleteEntry(id) {
@@ -290,13 +287,11 @@ function parseAudioUrls(cell) {
   try { return JSON.parse(cell); } catch (e) { return {}; }
 }
 
-function parseConfirmedAt(cell) {
-  if (cell === '' || cell == null) return '';
-  if (Object.prototype.toString.call(cell) === '[object Date]' && !isNaN(cell.getTime())) {
-    return cell.getTime();
-  }
+function parseCorrectCount(cell) {
+  if (cell === '' || cell == null) return 0;
   const n = Number(cell);
-  return isNaN(n) || n <= 0 ? '' : n;
+  if (isNaN(n) || n < 0) return 0;
+  return Math.floor(n);
 }
 
 function normalizePos(pos) {
