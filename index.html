@@ -859,6 +859,7 @@ const API_KEY_STORAGE = 'phrase_anthropic_api_key';
 const FILTER_STORAGE = 'phrase_pos_filter';
 const SEARCH_STORAGE = 'phrase_word_search';
 const SORT_MODE_STORAGE = 'phrase_sort_mode';
+const CORRECT_COUNT_STORAGE = 'phrase_correct_counts';
 const VALID_SORT_MODES = ['correct-asc', 'correct-desc', 'registered-desc', 'registered-asc'];
 const SORT_LABELS = {
   'correct-asc': 'Correct count (lowest first)',
@@ -1021,16 +1022,25 @@ function makeClozeHtml(en, keyword, input) {
 }
 
 function buildReviewCandidates(prevId, prevIdx) {
-  const ordered = getReviewableEntries();
+  const reviewable = getReviewableEntries();
+  if (!reviewable.length) return [];
+
+  const minCount = Math.min(...reviewable.map(getCorrectCount));
+  const tier = reviewable.filter(e => getCorrectCount(e) === minCount);
+  const regTimes = tier.map(getRegistrationTime);
+  const minReg = Math.min(...regTimes);
+  const maxReg = Math.max(...regTimes);
+  const regSpan = maxReg - minReg || 1;
+
   const allCandidates = [];
   const otherCandidates = [];
-  ordered.forEach((entry, rank) => {
-    const weight = ordered.length - rank;
+  tier.forEach(entry => {
+    const ageBias = 1 + (maxReg - getRegistrationTime(entry)) / regSpan;
     for (let i = 1; i < Math.min(entry.examples.length, 5); i++) {
       const ex = entry.examples[i];
       if (!ex || !ex.en || !ex.ja) continue;
       if (!findTermInSentence(ex.en, entry.keyword, entry.input)) continue;
-      const item = { entry, exampleIdx: i, weight };
+      const item = { entry, exampleIdx: i, weight: ageBias };
       allCandidates.push(item);
       if (!(entry.id === prevId && i === prevIdx)) otherCandidates.push(item);
     }
@@ -1053,7 +1063,7 @@ function pickWeightedReviewQuestion(prevId, prevIdx) {
 function recordCorrectAnswer(id) {
   const e = entries.find(x => x.id === id);
   if (!e) return;
-  e.correctCount = getCorrectCount(e) + 1;
+  setCorrectCountLocal(id, getCorrectCount(e) + 1);
   persistCorrectCount(id);
   applyListOrder();
   render();
@@ -1427,17 +1437,16 @@ async function loadEntries() {
   try {
     const res = await fetch(GAS_URL + '?action=getAll');
     const data = await res.json();
-    entries = (data.entries || []).map(e => {
-      return {
-        ...e,
-        member: normalizeMemberName(e.member || ''),
-        pos: e.pos || '',
-        correctCount: Number(e.correctCount) || 0,
-        idx: 0,
-        show: false,
-        audioUrls: e.audioUrls || {}
-      };
-    });
+    entries = (data.entries || []).map(e => ({
+      ...e,
+      member: normalizeMemberName(e.member || ''),
+      pos: e.pos || '',
+      correctCount: Number(e.correctCount) || 0,
+      idx: 0,
+      show: false,
+      audioUrls: e.audioUrls || {}
+    }));
+    mergeCorrectCountsFromSheet(entries);
     applyListOrder();
   } catch (e) {
     console.error('Load error:', e);
@@ -1619,7 +1628,8 @@ async function saveEntry() {
     if (data.error) throw new Error(data.error);
 
     const entry = data.entry;
-    entries.push({ ...entry, member: entry.member || member, pos: entry.pos || '', correctCount: entry.correctCount || 0, idx: 0, show: false, audioUrls: entry.audioUrls || {} });
+    entries.push({ ...entry, member: entry.member || member, pos: entry.pos || '', correctCount: 0, idx: 0, show: false, audioUrls: entry.audioUrls || {} });
+    setCorrectCountLocal(entry.id, 0);
     applyListOrder();
     inp.value = '';
     noteEl.value = '';
@@ -1646,9 +1656,49 @@ async function saveEntry() {
   btn.disabled = false;
 }
 
+function getCorrectCountMap() {
+  try {
+    return JSON.parse(localStorage.getItem(CORRECT_COUNT_STORAGE) || '{}');
+  } catch {
+    return {};
+  }
+}
+
+function saveCorrectCountMap(map) {
+  localStorage.setItem(CORRECT_COUNT_STORAGE, JSON.stringify(map));
+}
+
 function getCorrectCount(e) {
+  const local = getCorrectCountMap()[String(e.id)];
+  if (local != null) {
+    const n = Number(local);
+    if (!isNaN(n) && n >= 0) return Math.floor(n);
+  }
   const n = Number(e.correctCount);
-  return isNaN(n) || n < 0 ? 0 : n;
+  return isNaN(n) || n < 0 ? 0 : Math.floor(n);
+}
+
+function setCorrectCountLocal(id, count) {
+  const next = Math.max(0, Math.floor(Number(count) || 0));
+  const map = getCorrectCountMap();
+  map[String(id)] = next;
+  saveCorrectCountMap(map);
+  const e = entries.find(x => x.id === id);
+  if (e) e.correctCount = next;
+  return next;
+}
+
+function mergeCorrectCountsFromSheet(sheetEntries) {
+  const map = getCorrectCountMap();
+  sheetEntries.forEach(e => {
+    const id = String(e.id);
+    const sheetCount = Number(e.correctCount) || 0;
+    const localCount = map[id] != null ? Number(map[id]) || 0 : null;
+    const merged = localCount != null ? Math.max(sheetCount, localCount) : sheetCount;
+    e.correctCount = merged;
+    map[id] = merged;
+  });
+  saveCorrectCountMap(map);
 }
 
 function getRegistrationTime(e) {
@@ -1741,16 +1791,12 @@ function onSortChange() {
   render();
 }
 
-async function persistCorrectCount(id) {
-  try {
-    await fetch(GAS_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-      body: JSON.stringify({ action: 'incrementCorrectCount', id })
-    });
-  } catch (e) {
-    console.warn('incrementCorrectCount failed:', e);
-  }
+function persistCorrectCount(id) {
+  fetch(GAS_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+    body: JSON.stringify({ action: 'incrementCorrectCount', id })
+  }).catch(() => {});
 }
 
 async function deleteEntry(ev, id) {
@@ -1769,6 +1815,9 @@ async function deleteEntry(ev, id) {
     const data = await res.json();
     if (!data.ok) throw new Error(data.error || 'Delete failed');
     entries = entries.filter(x => x.id !== id);
+    const countMap = getCorrectCountMap();
+    delete countMap[String(id)];
+    saveCorrectCountMap(countMap);
     if (reviewState.entryId === id) {
       reviewState.entryId = null;
       loadReviewQuestion();
